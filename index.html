@@ -1227,6 +1227,7 @@ function onPointerUp(e) {
       S.playerRegions.push({ cells: [startIdx] });
       renderGrid();
       renderGuide();
+      checkCompletion();
     }
   } else if (hasMoved) {
     // DRAG — commit the drawn region
