@@ -830,12 +830,18 @@ function renderGrid() {
       const cy = PADDING + r * (cellSize + CELL_GAP);
 
       const cellCornerRadius = 3;
+      
+      // Subtle cell background: slightly lighter than grid bg for visibility
+      const gridBg = getComputedStyle(document.documentElement).getPropertyValue('--grid-bg').trim();
+      const isDark = document.documentElement.classList.contains('dark');
+      const cellFill = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.45)';
+
       const rect = el('rect', {
         x: cx, y: cy,
         width: cellSize,
         height: cellSize,
         rx: cellCornerRadius, ry: cellCornerRadius,
-        fill: 'transparent'   // transparent by default; regions override
+        fill: cellFill
       });
 
       // Make each cell react to clicks/taps (for undo and emoji tap)
