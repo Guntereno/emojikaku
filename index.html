@@ -269,6 +269,24 @@ header h1 { font-size: 1.4rem; font-weight: 700; }
   transform: translate(-50%, -50%);
 }
 
+.incorrect-overlay rect {
+  pointer-events: none;
+  fill: rgba(239, 68, 68, 0.15) !important;
+  stroke: #b71c1c !important;
+  stroke-width: 4 !important;
+  rx: 6 !important;
+  ry: 6 !important;
+}
+
+.dark .incorrect-overlay rect {
+  pointer-events: none;
+  fill: rgba(255, 82, 82, 0.35) !important;
+  stroke: #b71c1c !important;
+  stroke-width: 4 !important;
+  rx: 6 !important;
+  ry: 6 !important;
+}
+
 #game-controls {
   display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; justify-content: center;
 }
@@ -513,7 +531,10 @@ let S = {
   hintsUsed: 0, maxHints: 3,
   timer: 0, timerInterval: null,
   stats: { solved: 0, streak: 0, times: [], facts: [] },
-  selectedScreenBeforeSettings: 'menu'
+  selectedScreenBeforeSettings: 'menu',
+  // Incorrect-region overlays shown after failed completion check
+  _incorrectRegions: null,   // [{cells, ox, oy, ow, oh}] or null
+  _dismissOverlays: false
 };
 
 const DIFFS = {
@@ -820,6 +841,11 @@ function computeGridSize() {
 }
 
 function renderGrid() {
+  computeGridSize();
+  _clearOverlays();
+  const pendingOverlays = S._incorrectRegions;
+  S._incorrectRegions = null;
+
   const container = document.getElementById('grid-container');
   const svg = document.getElementById('game-grid-svg');
   const w = S.gridW, h = S.gridH;
@@ -993,6 +1019,11 @@ function renderGrid() {
   }
   svg.appendChild(emojiGroup);
 
+  // Restore incorrect region overlays only from the failed completion check (first renderGrid call)
+  if (pendingOverlays) {
+    renderIncorrectOverlays(svg, pendingOverlays);
+  }
+
   // --- bind events ---------------------------------------------------------
   if (!revealed && !S._listenersBound) {
     container.addEventListener('pointerdown', onPointerDown);
@@ -1068,6 +1099,13 @@ function getCellAtPos(x, y) {
 
 function onPointerDown(e) {
   e.preventDefault();
+
+  // One-shot dismiss: any tap after a failed completion check clears overlays immediately
+  if (S._dismissOverlays) {
+    S._dismissOverlays = false;
+    _clearOverlays();
+  }
+
   const target = e.target;
 
   // Region overlay tap → remove candidate
@@ -1251,6 +1289,9 @@ function commitDrawnRegion() {
   const cells = [...drawCells].sort((a, b) => a - b);
   if (cells.length === 0) return;
 
+  _clearOverlays();
+  S._incorrectRegions = null;
+
   // Compute bounding rect
   let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
   for (const idx of cells) {
@@ -1298,23 +1339,31 @@ function checkCompletion() {
   if (covered < totalCells) return; // Not all cells covered yet
 
   // All cells covered — validate the solution
-  const isCorrect = validateSolution();
+  const result = validateSolution();
 
   pauseTimer();
-  if (isCorrect) {
+  if (result.correct) {
     S.stats.solved++;
     savePersisted();
     showCompletion(true);
   } else {
+    // Show red overlays on incorrect regions before the "Not Quite Right" screen covers the grid
+    if (result.wrong.length > 0 && S._incorrectRegions === null) {
+      computeOverlayRects(result.wrong);
+      const svg = document.getElementById('game-grid-svg');
+      if (svg) renderIncorrectOverlays(svg, S._incorrectRegions);
+      S._dismissOverlays = true;
+    }
     showCompletion(false);
   }
 }
 
 function validateSolution() {
   // Each player region must be a rectangle whose area matches the solution value of its cells
+  const wrong = [];
   for (const pr of S.playerRegions) {
     const area = pr.cells.length;
-    if (area === 0) return false;
+    if (area === 0) { wrong.push(pr); continue; }
 
     let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
     for (const idx of pr.cells) {
@@ -1325,25 +1374,28 @@ function validateSolution() {
 
     // Must be a perfect rectangle
     const expectedArea = (maxR - minR + 1) * (maxC - minC + 1);
-    if (area !== expectedArea) return false;
+    if (area !== expectedArea) { wrong.push(pr); continue; }
 
     // All cells must share the same solution value, and area must match that value
     const expectedValue = S.solutionCells[pr.cells[0]];
+    let valueOk = true;
     for (const idx of pr.cells) {
-      if (S.solutionCells[idx] !== expectedValue) return false;
+      if (S.solutionCells[idx] !== expectedValue) { valueOk = false; break; }
     }
-    if (area !== expectedValue) return false;
+    if (!valueOk || area !== expectedValue) { wrong.push(pr); continue; }
   }
 
-  // Also verify no two regions overlap and all cells are covered (already guaranteed by the UI, but double-check)
+  // Also verify no two regions overlap and all cells are covered
   const seen = new Set();
   for (const pr of S.playerRegions) {
     for (const idx of pr.cells) {
-      if (seen.has(idx)) return false;
+      if (seen.has(idx)) return { correct: false, wrong: S.playerRegions };
       seen.add(idx);
     }
   }
-  return seen.size === S.gridW * S.gridH;
+
+  if (seen.size !== S.gridW * S.gridH) return { correct: false, wrong: [] };
+  return { correct: wrong.length === 0, wrong };
 }
 
 function getCorrectRegions() {
@@ -1403,6 +1455,8 @@ function showCompletion(correct) {
 // ============================================================
 function undo() {
   if (S.history.length === 0) return;
+  _clearOverlays();
+  S._incorrectRegions = null;
   S.playerRegions = S.history.pop();
   renderGrid();
   renderGuide();
@@ -1410,6 +1464,8 @@ function undo() {
 
 function hint() {
   if (S.hintsUsed >= S.maxHints || S.playerRegions.length > 0) return;
+  _clearOverlays();
+  S._incorrectRegions = null;
 
   // Find first uncovered cell and reveal its region
   const totalCells = S.gridW * S.gridH;
@@ -1453,6 +1509,8 @@ function hint() {
 function revealSolution() {
   if (!confirm('Reveal the solution? This ends the puzzle.')) return;
   stopTimer();
+  _clearOverlays();
+  S._incorrectRegions = null;
   revealed = true;
 
   // Copy all solution regions into playerRegions (each region as one entry)
@@ -1574,6 +1632,66 @@ function showToast(message, duration) {
   if (header) header.appendChild(toast);
   setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.5s'; }, duration);
   setTimeout(() => { if (toast.parentNode) toast.remove(); }, duration + 600);
+}
+
+// ============================================================
+// INCORRECT REGION OVERLAYS
+// ============================================================
+function _clearOverlays() {
+  const svg = document.getElementById('game-grid-svg');
+  const existing = svg.querySelector('.incorrect-overlay-group');
+  if (existing) existing.remove();
+}
+
+function renderIncorrectOverlays(svg, regions) {
+  let overlayGroup = svg.querySelector('.incorrect-overlay-group');
+  if (!overlayGroup) {
+    const NS = 'http://www.w3.org/2000/svg';
+    overlayGroup = document.createElementNS(NS, 'g');
+    overlayGroup.classList.add('incorrect-overlay-group', 'incorrect-overlay');
+    // Insert right before the emoji layer so overlays sit below emoji text
+    const emojiGroup = svg.querySelector('.emoji-layer');
+    if (emojiGroup) svg.insertBefore(overlayGroup, emojiGroup);
+    else svg.appendChild(overlayGroup);
+  }
+  overlayGroup.innerHTML = '';
+
+  for (const r of regions) {
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', r.ox);
+    rect.setAttribute('y', r.oy);
+    rect.setAttribute('width', r.ow);
+    rect.setAttribute('height', r.oh);
+    if (S.darkMode) {
+      rect.setAttribute('fill', 'rgba(255, 82, 82, 0.4)');
+      rect.setAttribute('stroke', '#ffffff');
+    } else {
+      rect.setAttribute('fill', 'rgba(239, 68, 68, 0.15)');
+      rect.setAttribute('stroke', '#b71c1c');
+    }
+    rect.setAttribute('stroke-width', '4');
+    rect.setAttribute('rx', '6');
+    rect.setAttribute('ry', '6');
+    overlayGroup.appendChild(rect);
+  }
+}
+
+function computeOverlayRects(wrongRegions) {
+  S._incorrectRegions = wrongRegions.map(r => {
+    let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
+    for (const idx of r.cells) {
+      const [cr, cc] = idxToRC(idx, S.gridW);
+      if (cr < minR) minR = cr; if (cr > maxR) maxR = cr;
+      if (cc < minC) minC = cc; if (cc > maxC) maxC = cc;
+    }
+    return {
+      cells: r.cells,
+      ox: PADDING + minC * (cellSize + CELL_GAP),
+      oy: PADDING + minR * (cellSize + CELL_GAP),
+      ow: (maxC - minC + 1) * cellSize + (maxC - minC) * CELL_GAP,
+      oh: (maxR - minR + 1) * cellSize + (maxR - minR) * CELL_GAP
+    };
+  });
 }
 
 // ============================================================
@@ -1740,7 +1858,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-reveal').addEventListener('click', revealSolution);
 
   // Clear all regions
-  document.getElementById('btn-clear').addEventListener('click', () => { S.playerRegions = []; renderGrid(); renderGuide(); });
+  document.getElementById('btn-clear').addEventListener('click', () => { _clearOverlays(); S._incorrectRegions = null; S.playerRegions = []; renderGrid(); renderGuide(); });
 
   // Next puzzle (correct solution) — wired inline in showCompletion
 
