@@ -1,0 +1,1743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Emojikaku</title>
+<style>
+:root {
+  --bg: #F5F3EF;
+  --fg: #2D3142;
+  --line: #2D3142;
+  --grid-bg: #EDEBE6;
+  --region-fill-1: rgba(173, 216, 230, 0.45);
+  --region-fill-2: rgba(175, 238, 175, 0.45);
+  --region-fill-3: rgba(255, 218, 185, 0.45);
+  --region-fill-4: rgba(221, 160, 221, 0.45);
+  --region-fill-5: rgba(255, 192, 203, 0.45);
+  --region-fill-6: rgba(176, 224, 230, 0.45);
+  --region-fill-7: rgba(250, 230, 170, 0.45);
+  --region-fill-8: rgba(198, 226, 195, 0.45);
+  --region-fill-9: rgba(210, 180, 220, 0.45);
+  --accent: #E07A5F;
+  --btn-bg: #2D3142;
+  --btn-fg: #F5F3EF;
+}
+
+.dark {
+  --bg: #1A1D23;
+  --fg: #E8E0D5;
+  --line: #4A4F5C;
+  --grid-bg: #2A2E35;
+  --region-fill-1: rgba(173, 216, 230, 0.3);
+  --region-fill-2: rgba(175, 238, 175, 0.3);
+  --region-fill-3: rgba(255, 218, 185, 0.3);
+  --region-fill-4: rgba(221, 160, 221, 0.3);
+  --region-fill-5: rgba(255, 192, 203, 0.3);
+  --region-fill-6: rgba(176, 224, 230, 0.3);
+  --region-fill-7: rgba(250, 230, 170, 0.3);
+  --region-fill-8: rgba(198, 226, 195, 0.3);
+  --region-fill-9: rgba(210, 180, 220, 0.3);
+  --accent: #E07A5F;
+  --btn-bg: #E8E0D5;
+  --btn-fg: #1A1D23;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: background 0.3s, color 0.3s;
+}
+
+#app {
+  width: 100%;
+  max-width: 520px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+}
+
+header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  flex-shrink: 0;
+}
+
+header h1 { font-size: 1.4rem; font-weight: 700; }
+
+.header-btns { display: flex; gap: 12px; }
+
+.header-btns button {
+  background: none; border: none; font-size: 1.3rem;
+  cursor: pointer; color: var(--fg); padding: 4px;
+}
+
+#screen-container {
+  width: 100%; flex: 1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+
+.screen {
+  display: none; width: 100%;
+  flex-direction: column; align-items: center;
+  animation: fadeIn 0.25s ease-out;
+}
+.screen.active { display: flex; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- Menu ---- */
+.menu-title { font-size: 3.5rem; margin-bottom: 4px; }
+.menu-subtitle {
+  font-size: 1rem; opacity: 0.6;
+  margin-bottom: 28px; text-align: center; line-height: 1.5;
+}
+
+.difficulty-group {
+  display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; justify-content: center;
+}
+
+.diff-btn {
+  padding: 10px 18px; border: 2px solid var(--fg); background: transparent;
+  color: var(--fg); border-radius: 8px; font-size: 0.95rem; cursor: pointer;
+  transition: all 0.15s;
+}
+.diff-btn:hover { opacity: 0.7; }
+.diff-btn.selected { background: var(--fg); color: var(--bg); }
+
+.play-btn {
+  padding: 14px 48px; background: var(--accent); color: white; border: none;
+  border-radius: 12px; font-size: 1.2rem; font-weight: 700; cursor: pointer; margin-bottom: 12px;
+}
+
+.secondary-btn {
+  padding: 10px 24px; background: transparent; color: var(--fg); border: 1px solid var(--fg);
+  border-radius: 8px; font-size: 0.9rem; cursor: pointer;
+}
+
+/* ---- Tutorial ---- */
+.tutorial-step { text-align: center; max-width: 420px; }
+.tutorial-emoji { font-size: 3.5rem; margin: 20px 0; }
+.tutorial-text { font-size: 1.05rem; line-height: 1.6; margin-bottom: 20px; }
+
+.tutorial-pair { display: flex; gap: 20px; justify-content: center; margin: 16px 0; }
+
+.tutorial-box { text-align: center; }
+.tutorial-box .label { font-size: 0.75rem; opacity: 0.5; margin-bottom: 8px; }
+
+.mini-grid { display: grid; gap: 2px; background: var(--fg); padding: 2px; border-radius: 4px; }
+.mini-cell {
+  width: 48px; height: 48px; display: flex; align-items: center; justify-content: center;
+  background: var(--bg); font-size: 1.3rem; font-weight: 600;
+}
+
+.tutorial-nav { display: flex; gap: 12px; margin-top: 20px; }
+
+.nav-btn { padding: 12px 28px; border: none; border-radius: 8px; font-size: 1rem; cursor: pointer; }
+.nav-btn.primary { background: var(--accent); color: white; }
+.nav-btn.secondary-tut { background: transparent; border: 1px solid var(--fg); color: var(--fg); }
+
+/* ---- Game Layout ---- */
+#game-layout {
+  display: flex; gap: 16px; align-items: flex-start; width: 100%;
+}
+
+#grid-container { flex-shrink: 0; }
+
+#guide-panel {
+  flex-shrink: 0; min-width: 80px;
+}
+
+.guide-title {
+  font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em;
+  opacity: 0.5; margin-bottom: 6px; text-align: center;
+}
+
+#guide-table {
+  width: 100%; border-collapse: collapse; font-size: 0.8rem;
+}
+
+#guide-table td {
+  padding: 3px 4px; text-align: center; vertical-align: middle;
+}
+
+#guide-table td.guide-emoji {
+  font-size: 1.2rem; width: 36px;
+}
+
+#guide-table td.guide-guess {
+  font-weight: 600; min-width: 40px;
+}
+
+#guide-table tr.guide-conflict td.guide-guess {
+  color: var(--accent); font-weight: 700;
+}
+
+#guide-table tr.guide-duplicate td.guide-emoji,
+#guide-table tr.guide-duplicate td.guide-guess {
+  background: rgba(255, 193, 7, 0.15);
+  border-radius: 4px;
+}
+
+#guide-panel.disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* ---- Game Controls ---- */
+.game-header {
+  width: 100%; display: flex; justify-content: space-between;
+  align-items: center; padding: 8px 0; margin-bottom: 8px;
+}
+
+.game-header button {
+  background: transparent; border: 1px solid var(--fg); color: var(--fg);
+  border-radius: 6px; padding: 6px 14px; font-size: 0.85rem; cursor: pointer;
+}
+
+.timer { font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+.hints-left { font-size: 0.9rem; opacity: 0.7; }
+
+#grid-container {
+  position: relative;
+  touch-action: none;
+}
+
+#game-grid-svg {
+  display: block;
+  overflow: visible;
+}
+
+.draw-preview {
+  position: absolute;
+  pointer-events: none;
+  z-index: 10;
+  border-radius: 6px;
+  background: rgba(224, 122, 95, 0.2);
+  box-shadow: 0 0 0 2.5px var(--accent), inset 0 0 0 1px rgba(224, 122, 95, 0.3);
+}
+
+.cell-label {
+  pointer-events: none;
+  user-select: none;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.minus-preview {
+  position: absolute;
+  pointer-events: none;
+  z-index: 10;
+  font-size: 1.2rem;
+  color: var(--accent);
+  opacity: 0.85;
+  transform: translate(-50%, -50%);
+}
+
+#game-controls {
+  display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; justify-content: center;
+}
+
+.ctrl-btn {
+  padding: 10px 18px; border: 1px solid var(--fg); background: transparent;
+  color: var(--fg); border-radius: 8px; font-size: 0.85rem; cursor: pointer;
+}
+.ctrl-btn:hover { opacity: 0.7; }
+.ctrl-btn:disabled { opacity: 0.3; cursor: default; }
+
+/* ---- Emoji Panel ---- */
+.emoji-panel {
+  display: none; position: fixed; bottom: 16px; left: 50%;
+  transform: translateX(-50%); background: var(--bg);
+  border: 2px solid var(--fg); border-radius: 16px; padding: 20px 28px;
+  z-index: 100; min-width: 240px; text-align: center;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+}
+.emoji-panel.visible { display: block; }
+.panel-emoji-big { font-size: 2.8rem; margin-bottom: 8px; }
+.panel-values { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+
+.val-btn {
+  width: 38px; height: 38px; border-radius: 50%;
+  border: 2px solid var(--fg); background: transparent; font-size: 1rem;
+  cursor: pointer; color: var(--fg);
+}
+.val-btn:hover { background: var(--accent); color: white; border-color: var(--accent); }
+.val-btn.confirmed-mark { background: var(--accent); color: white; border-color: var(--accent); }
+
+/* ---- Stats ---- */
+.stats-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+  margin: 20px 0; width: 100%; max-width: 300px;
+}
+.stat-card {
+  background: var(--bg); border: 1px solid var(--fg); border-radius: 12px;
+  padding: 16px; text-align: center;
+}
+.stat-value { font-size: 1.7rem; font-weight: 700; }
+.stat-label { font-size: 0.8rem; opacity: 0.55; margin-top: 4px; }
+
+/* ---- Settings ---- */
+.settings-group { margin: 20px 0; width: 100%; max-width: 300px; }
+.setting-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 0; border-bottom: 1px solid var(--fg); opacity: 0.7;
+}
+
+.toggle-track {
+  width: 48px; height: 28px; background: var(--line); border-radius: 14px;
+  position: relative; cursor: pointer; transition: background 0.2s;
+}
+.toggle-track::after {
+  content: ''; position: absolute; top: 3px; left: 3px;
+  width: 22px; height: 22px; background: var(--bg); border-radius: 50%;
+  transition: transform 0.2s;
+}
+.toggle-track.active { background: var(--accent); }
+.toggle-track.active::after { transform: translateX(20px); }
+
+/* ---- Completion ---- */
+.completion-emoji { font-size: 3.5rem; margin-bottom: 12px; animation: bounce 0.5s ease-out; }
+@keyframes bounce { 0%,100% { transform: scale(1); } 50% { transform: scale(1.2); } }
+
+.fact-card {
+  background: var(--bg); border: 2px solid var(--accent); border-radius: 16px;
+  padding: 20px 28px; margin: 20px 0; text-align: center; max-width: 300px;
+}
+.fact-text { font-size: 1.1rem; line-height: 1.5; }
+.complete-time { margin: 12px 0; opacity: 0.6; }
+
+/* ---- Responsive ---- */
+@media (max-width: 380px) {
+  .mini-cell { width: 42px; height: 42px; font-size: 1.1rem; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Emojikaku</h1>
+    <div class="header-btns">
+      <button id="btn-theme" title="Toggle theme">🌙</button>
+      <button id="btn-stats" title="Stats">🏆</button>
+      <button id="btn-settings" title="Settings">⚙️</button>
+    </div>
+  </header>
+
+  <div id="screen-container">
+    <!-- Menu -->
+    <div id="screen-menu" class="screen active">
+      <div class="menu-title">🧩❓</div>
+      <div class="menu-subtitle">Divide the grid into rectangles.<br>Each emoji hides a number — deduce which is which.</div>
+
+      <div class="difficulty-group">
+        <button class="diff-btn selected" data-diff="easy">🟢 Easy</button>
+        <button class="diff-btn" data-diff="medium">🔵 Medium</button>
+        <button class="diff-btn" data-diff="hard">🟣 Hard</button>
+        <button class="diff-btn" data-diff="expert">🔴 Expert</button>
+      </div>
+
+      <button class="play-btn" id="btn-play">▶ Play</button>
+      <button class="secondary-btn" id="btn-tutorial">✨ Tutorial</button>
+    </div>
+
+    <!-- Tutorial -->
+    <div id="screen-tutorial" class="screen">
+      <div class="tutorial-step" id="tutorial-content"></div>
+    </div>
+
+    <!-- Game -->
+    <div id="screen-game" class="screen">
+      <div class="game-header">
+        <button id="btn-back">← Menu</button>
+        <span class="timer" id="timer">0:00</span>
+        <span class="hints-left" id="hints-display"></span>
+      </div>
+
+      <div id="game-layout">
+        <div id="grid-container"><svg id="game-grid-svg"></svg></div>
+        <div id="guide-panel">
+          <h3 class="guide-title">Guesses</h3>
+          <table id="guide-table"></table>
+        </div>
+      </div>
+
+      <div id="game-controls">
+        <button class="ctrl-btn" id="btn-undo">↩ Undo</button>
+        <button class="ctrl-btn" id="btn-hint">💡 Hint</button>
+        <button class="ctrl-btn" id="btn-reveal">🔍 Reveal</button>
+        <button class="ctrl-btn" id="btn-clear">🗑 Clear</button>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div id="screen-stats" class="screen">
+      <h2>Your Stats</h2>
+      <div class="stats-grid" id="stats-content"></div>
+      <button class="secondary-btn" id="btn-stats-back">← Back</button>
+    </div>
+
+    <!-- Settings -->
+    <div id="screen-settings" class="screen">
+      <h2>Settings</h2>
+      <div class="settings-group">
+        <div class="setting-row">
+          <span>Dark Mode</span>
+          <div class="toggle-track" id="toggle-dark"></div>
+        </div>
+        <div class="setting-row">
+          <span>Show Numbers on Reveal</span>
+          <div class="toggle-track active" id="toggle-numbers"></div>
+        </div>
+        <div class="setting-row">
+          <span>Random Emoji Position</span>
+          <div class="toggle-track" id="toggle-random-emoji"></div>
+        </div>
+      </div>
+      <button class="secondary-btn" id="btn-settings-back">← Back</button>
+    </div>
+
+    <!-- Completion -->
+    <div id="screen-complete" class="screen">
+      <div class="completion-emoji">🎉</div>
+      <h2 id="complete-title">Puzzle Solved!</h2>
+      <div class="fact-card"><div class="fact-text" id="fact-text"></div></div>
+      <button class="play-btn" id="btn-complete-action">▶ Next Puzzle</button>
+      <button class="secondary-btn" id="btn-complete-menu" style="margin-top:8px;">Menu</button>
+    </div>
+  </div>
+</div>
+
+<!-- Emoji Panel (hidden — no longer used) -->
+<div class="emoji-panel" id="emoji-panel" style="display:none;">
+  <div class="panel-emoji-big" id="panel-emoji"></div>
+  <p style="margin-bottom:10px; opacity:0.6;">Mark as:</p>
+  <div class="panel-values" id="panel-values"></div>
+  <button class="nav-btn secondary-tut" id="panel-clear" style="margin-top:12px; font-size:0.85rem; padding:8px 20px;">Unmark</button>
+  <button class="nav-btn secondary-tut" id="panel-close" style="margin-top:8px; font-size:0.85rem; padding:8px 20px;">Close</button>
+</div>
+
+<script>
+// ============================================================
+// EMOJI POOL (diverse, no semantic hints)
+// ============================================================
+const EMOJI_POOL = [
+  // Faces
+  '😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃',
+  // Animals
+  '🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯',
+  // Food
+  '🍎','🍕','🍔','🌮','🍩','🍰','🍪','🧁','🍫','🍿',
+  // Nature
+  '🌸','🌺','🌻','🌹','🌷','🌵','🌴','🌱','🍀','🍄',
+  // Objects
+  '⚽','🏀','🎾','🎲','🧩','🎯','🎪','🎨','🔮','📦',
+  // Misc
+  '⭐','❤️','💙','💜','💚','💛','🧡','🖤','🤍','💖'
+];
+
+// ============================================================
+// STATE
+// ============================================================
+let S = {
+  screen: 'menu',
+  difficulty: 'easy',
+  darkMode: false,
+  showNumbers: true,
+  randomEmojiPos: false,
+  // Puzzle data
+  gridW: 0, gridH: 0,
+  cells: null,          // [[emoji|number], ...] flat or 2D
+  solutionCells: [],    // 1D array of values (the numbers)
+  cellEmojis: [],       // 1D array of emojis at each cell position
+  regions: [],          // [{ value, cells: [idx,...] }]
+  playerRegions: [],    // user-drawn [{ cells: [idx,...] }]
+  history: [],          // undo snapshots of playerRegions
+  guideGuesses: {},     // { emojiChar: [size1, size2, ...] }
+  hintsUsed: 0, maxHints: 3,
+  timer: 0, timerInterval: null,
+  stats: { solved: 0, streak: 0, times: [], facts: [] },
+  selectedScreenBeforeSettings: 'menu'
+};
+
+const DIFFS = {
+  easy:   { minW: 3, maxW: 5, minH: 3, maxH: 5 },
+  medium: { minW: 6, maxW: 8, minH: 6, maxH: 8 },
+  hard:   { minW: 9, maxW: 10, minH: 9, maxH: 10 },
+  expert: { minW: 11, maxW: 14, minH: 11, maxH: 14 }
+};
+
+// ============================================================
+// UTILITIES
+// ============================================================
+function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = rand(0, i); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+function idxToRC(idx, w) { return [Math.floor(idx / w), idx % w]; }
+function rcToIdx(r, c, w) { return r * w + c; }
+
+function formatTime(s) { const m = Math.floor(s / 60); return `${m}:${(s % 60).toString().padStart(2, '0')}`; }
+
+// ============================================================
+// PERSISTENCE
+// ============================================================
+function loadPersisted() {
+  try {
+    const d = localStorage.getItem('emojikaku');
+    if (d) { const p = JSON.parse(d); Object.assign(S.stats, p.stats || {}); if (p.darkMode) S.darkMode = true; }
+  } catch(e) {}
+}
+function savePersisted() {
+  try { localStorage.setItem('emojikaku', JSON.stringify({ stats: S.stats, darkMode: S.darkMode })); } catch(e) {}
+}
+
+// ============================================================
+// SCREENS
+// ============================================================
+function showScreen(name) {
+  S.screen = name;
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById(`screen-${name}`);
+  if (el) el.classList.add('active');
+}
+
+// ============================================================
+// PUZZLE GENERATION — Proper Backtracking Shikaku Solver
+// ============================================================
+function generatePuzzle(difficulty) {
+  const cfg = DIFFS[difficulty];
+  let attempts = 0;
+  const maxAttempts = 200;
+
+  while (attempts < maxAttempts) {
+    attempts++;
+    const w = rand(cfg.minW, cfg.maxW);
+    const h = rand(cfg.minH, cfg.maxH);
+
+    // Generate a valid division using backtracking
+    const result = solveShikaku(w, h);
+    if (result) {
+      // Build emoji grid
+      return buildEmojiPuzzle(w, h, result);
+    }
+  }
+  // Fallback: generate a simpler puzzle
+  return fallbackPuzzle(difficulty);
+}
+
+/**
+ * solveShikaku: Find a valid Shikaku division via backtracking.
+ * Returns { regions: [{value, cells:[idx,...]}] } or null.
+ */
+function solveShikaku(w, h) {
+  // We'll use a recursive approach: find the first empty cell,
+  // try all rectangle sizes that could cover it with a unique value
+  // such that the remaining cells can also be validly filled.
+
+  const area = w * h;
+  // We need to partition all `area` cells into rectangles of any positive integer area
+  // and each has exactly one "anchor" cell (we'll pick the top-left as anchor)
+
+  const placed = new Int8Array(area); // 0 = unplaced, 1 = placed
+  const regions = [];
+
+  function backtrack() {
+    // Find first unplaced cell
+    let first = -1;
+    for (let i = 0; i < area; i++) {
+      if (!placed[i]) { first = i; break; }
+    }
+    if (first === -1) return regions.length >= 2; // All placed, need at least 2 regions
+
+    const [fr, fc] = idxToRC(first, w);
+
+    // Collect all candidate rectangles covering (fr,fc), then shuffle for variety.
+    // Without shuffling the solver always picks the same tiling; with it we get diverse puzzles.
+    const candidates = [];
+    for (let rh = h - fr; rh >= 1; rh--) {
+      for (let rw = w - fc; rw >= 1; rw--) {
+        candidates.push([rh, rw]);
+      }
+    }
+    // Shuffle in-place so each backtracking call explores different tiling paths
+    for (let i = candidates.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }
+
+    for (const [rh, rw] of candidates) {
+      const regionArea = rh * rw;
+      // No upper limit — real Shikaku allows any positive integer area
+
+      // Check all cells in this rectangle are unplaced
+      let canPlace = true;
+      for (let dr = 0; dr < rh && canPlace; dr++) {
+        for (let dc = 0; dc < rw && canPlace; dc++) {
+          if (placed[rcToIdx(fr + dr, fc + dc, w)]) canPlace = false;
+        }
+      }
+      if (!canPlace) continue;
+
+      // Check that within this rectangle, the anchor cell is consistent
+      // (all cells must share the same value — but since we're generating,
+      //  we just need to ensure no two anchors fall in same region,
+      //  which is guaranteed by placing top-left as anchor)
+
+      // Place region
+      const cells = [];
+      for (let dr = 0; dr < rh; dr++) {
+        for (let dc = 0; dc < rw; dc++) {
+          placed[rcToIdx(fr + dr, fc + dc, w)] = 1;
+          cells.push(rcToIdx(fr + dr, fc + dc, w));
+        }
+      }
+
+      regions.push({ value: regionArea, cells });
+
+      if (backtrack()) return true;
+
+      // Unplace
+      regions.pop();
+      for (const c of cells) placed[c] = 0;
+    }
+    return false;
+  }
+
+  if (!backtrack()) return null;
+
+  // Verify each region's area matches its value — it should by construction
+  // But we need to make sure each region has exactly one "value" anchor.
+  // Since regionArea = rh * rw and value = regionArea, this is always true!
+  // Also check unique solution (simplified: just verify regions cover all cells)
+  let totalCells = 0;
+  for (const r of regions) totalCells += r.cells.length;
+  if (totalCells !== area) return null;
+
+  return { regions };
+}
+
+/**
+ * Build emoji grid from division. Each region gets value = its area.
+ * Values present are mapped to random emojis.
+ */
+function buildEmojiPuzzle(w, h, division) {
+  const values = [...new Set(division.regions.map(r => r.value))];
+  if (values.length === 0) return null;
+
+  // Assign random emojis to values
+  const shuffledEmojis = shuffle([...EMOJI_POOL]);
+  const emojiMap = {}; // value -> emoji
+  for (let i = 0; i < values.length; i++) {
+    emojiMap[values[i]] = shuffledEmojis[i];
+  }
+
+  // Build flat arrays — only anchor cell gets emoji, all others blank
+  const totalCells = w * h;
+  const cellEmojis = new Array(totalCells).fill('');
+  const solutionCells = new Array(totalCells);
+
+  for (const region of division.regions) {
+    let anchorIdx;
+    if (S.randomEmojiPos) {
+      // Pick a random cell within the region for the emoji
+      anchorIdx = region.cells[Math.floor(Math.random() * region.cells.length)];
+    } else {
+      // Top-left is the anchor — this is where the emoji appears
+      anchorIdx = region.cells[0];
+    }
+    solutionCells[anchorIdx] = region.value;
+    cellEmojis[anchorIdx] = emojiMap[region.value];
+
+    // Fill solutionCells for all cells (used to validate player draws)
+    for (const idx of region.cells) {
+      solutionCells[idx] = region.value;
+    }
+  }
+
+  return { w, h, cellEmojis, solutionCells, regions: division.regions, emojiMap };
+}
+
+function fallbackPuzzle(difficulty) {
+  const cfg = DIFFS[difficulty];
+  const w = (cfg.minW + cfg.maxW) >> 1;
+  const h = w;
+
+  // Simple strip-based division (row by row)
+  const regions = [];
+  let pos = 0;
+  while (pos < w * h) {
+    const val = rand(1, Math.max(1, w * h - pos));
+    const rh = Math.min(val, h - Math.floor(pos / w));
+    if (rh <= 0) { pos++; continue; }
+    const rw = Math.ceil(val / rh);
+    if (rw > w - (pos % w)) { // Adjust to fit remaining in row
+      regions.push({ value: 1, cells: [pos], r: Math.floor(pos / w), c: pos % w });
+      pos++;
+      continue;
+    }
+    const area = rh * rw;
+    regions.push({ value: area, cells: [], r: Math.floor(pos / w), c: pos % w });
+    for (let dr = 0; dr < rh; dr++) {
+      for (let dc = 0; dc < rw; dc++) {
+        const idx = rcToIdx(Math.floor(pos / w) + dr, (pos % w) + dc, w);
+        if (idx < w * h) regions[regions.length - 1].cells.push(idx);
+      }
+    }
+    pos += rh * rw;
+  }
+
+  return buildEmojiPuzzle(w, h, { regions });
+}
+
+// ============================================================
+// START PUZZLE
+// ============================================================
+function startPuzzle() {
+  const result = generatePuzzle(S.difficulty);
+  if (!result) { alert('Failed to generate puzzle. Trying again...'); startPuzzle(); return; }
+
+  S.gridW = result.w;
+  S.gridH = result.h;
+  S.cellEmojis = result.cellEmojis;
+  S.solutionCells = result.solutionCells;
+  S.regions = result.regions;
+  S.emojiMap = result.emojiMap;
+
+  // Build reverse map
+  S.reverseMap = {};
+  for (const [v, e] of Object.entries(result.emojiMap)) S.reverseMap[e] = parseInt(v);
+
+  S.playerRegions = [];
+  S.history = [];
+  S.guideGuesses = {};
+  S.hintsUsed = 0;
+  S.timer = 0;
+  revealed = false;
+  startRegionIdx = -1;
+
+  renderGrid();
+  document.getElementById('guide-panel').classList.remove('disabled');
+  renderGuide();
+  updateHintsDisplay();
+  startTimer();
+  disableControls(false);
+  showScreen('game');
+}
+
+// ============================================================
+// GRID RENDERING (SVG)
+// ============================================================
+const CELL_GAP = 2;       // gap between cells inside the grid
+const PADDING = 4;        // padding around grid content inside SVG
+
+// Cached layout state — only recomputed on resize or puzzle start, not every render
+let cellSize = 56;
+let gridW_px = 0, gridH_px = 0;
+
+function computeGridSize(force = false) {
+  if (!force && gridW_px > 0 && S.gridW > 0 && S.gridH > 0) return;
+  const container = document.getElementById('grid-container');
+  const rect = container.getBoundingClientRect();
+  const w = S.gridW, h = S.gridH;
+  const availW = rect.width || Math.min(56 * w + PADDING * 2, window.innerWidth - 32);
+  const availH = rect.height || Math.min(56 * h + PADDING * 2, window.innerHeight - 180);
+  cellSize = Math.max(1, Math.floor(Math.min((availW - PADDING * 2) / w, (availH - PADDING * 2) / h)));
+  gridW_px = w * cellSize + (w - 1) * CELL_GAP;
+  gridH_px = h * cellSize + (h - 1) * CELL_GAP;
+}
+
+function renderGrid() {
+  const container = document.getElementById('grid-container');
+  const svg = document.getElementById('game-grid-svg');
+  const w = S.gridW, h = S.gridH;
+
+  // --- sizing --------------------------------------------------
+  computeGridSize();
+  const svgW = PADDING * 2 + gridW_px;
+  const svgH = PADDING * 2 + gridH_px;
+
+  svg.setAttribute('width', svgW);
+  svg.setAttribute('height', svgH);
+  svg.style.width = svgW + 'px';
+  svg.style.height = svgH + 'px';
+  svg.innerHTML = '';
+
+  // NS helper
+  const NS = 'http://www.w3.org/2000/svg';
+  function el(tag, attrs) {
+    const e = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
+    return e;
+  }
+
+  // --- defs (clip + filters) -----------------------------------
+  const defs = el('defs');
+
+  // Clip path for the grid background so its corners stay rounded
+  const bgCornerRadius = 6;
+  const bgClipPath = el('clipPath', { id: 'grid-clip' });
+  const bgClipRect = el('rect', {
+    x: PADDING, y: PADDING,
+    width: w * cellSize + (w - 1) * CELL_GAP,
+    height: h * cellSize + (h - 1) * CELL_GAP,
+    rx: bgCornerRadius, ry: bgCornerRadius
+  });
+  bgClipPath.appendChild(bgClipRect);
+  defs.appendChild(bgClipPath);
+
+  svg.appendChild(defs);
+
+  // --- layer 0: grid background filled rounded rect ------------
+  const gridBg = el('rect', {
+    x: PADDING, y: PADDING,
+    width: w * cellSize + (w - 1) * CELL_GAP,
+    height: h * cellSize + (h - 1) * CELL_GAP,
+    rx: bgCornerRadius, ry: bgCornerRadius,
+    fill: getComputedStyle(document.documentElement).getPropertyValue('--grid-bg').trim() || '#EDEBE6'
+  });
+  svg.appendChild(gridBg);
+
+  // --- lookup: cell → player region index ----------------------
+  const cellRegion = new Int16Array(w * h).fill(-1);
+  for (let i = 0; i < S.playerRegions.length; i++) {
+    for (const idx of S.playerRegions[i].cells) cellRegion[idx] = i;
+  }
+
+  // --- layer 1: cells (filled rounded rects + emoji text) ------
+  const cellGroup = el('g', { class: 'cells-layer' });
+
+  for (let r = 0; r < h; r++) {
+    for (let c = 0; c < w; c++) {
+      const idx = rcToIdx(r, c, w);
+      const cx = PADDING + c * (cellSize + CELL_GAP);
+      const cy = PADDING + r * (cellSize + CELL_GAP);
+
+      const cellCornerRadius = 3;
+      const rect = el('rect', {
+        x: cx, y: cy,
+        width: cellSize,
+        height: cellSize,
+        rx: cellCornerRadius, ry: cellCornerRadius,
+        fill: 'transparent'   // transparent by default; regions override
+      });
+
+      // Make each cell react to clicks/taps (for undo and emoji tap)
+      rect.style.cursor = 'pointer';
+      rect.dataset.idx = idx;
+      cellGroup.appendChild(rect);
+
+      // Emoji text (only on anchor cells that have an emoji)
+      const emoji = S.cellEmojis[idx];
+      if (emoji) {
+        const fontSize = Math.max(8, Math.floor(cellSize * 0.5));
+        const text = el('text', {
+          x: cx + cellSize / 2,
+          y: cy + cellSize / 2,
+          'font-size': fontSize,
+          class: 'cell-label'
+        });
+        text.textContent = emoji;
+        cellGroup.appendChild(text);
+      }
+    }
+  }
+
+  svg.appendChild(cellGroup);
+
+  // --- layer 2: player/solution region overlays (filled rounded rects) --
+  if (S.playerRegions.length > 0) {
+    const regionGroup = el('g', { class: 'regions-layer' });
+
+    for (let i = 0; i < S.playerRegions.length; i++) {
+      const pr = S.playerRegions[i];
+
+      // Find bounding rect of all cells in this player region
+      let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
+      for (const idx of pr.cells) {
+        const [rr, cc] = idxToRC(idx, w);
+        if (rr < minR) minR = rr; if (rr > maxR) maxR = rr;
+        if (cc < minC) minC = cc; if (cc > maxC) maxC = cc;
+      }
+
+      const ox = PADDING + minC * (cellSize + CELL_GAP);
+      const oy = PADDING + minR * (cellSize + CELL_GAP);
+      const ow = (maxC - minC + 1) * cellSize + (maxC - minC) * CELL_GAP;
+      const oh = (maxR - minR + 1) * cellSize + (maxR - minR) * CELL_GAP;
+
+      // Per-region fill color from the palette
+      const palIdx = ((i % 9) + 1);
+      let bgColor = getComputedStyle(document.documentElement).getPropertyValue(`--region-fill-${palIdx}`).trim();
+      if (!bgColor || bgColor === '') {
+        bgColor = `hsla(${(i * 47) % 360}, 55%, 72%, ${revealed ? 0.5 : 0.45})`;
+      }
+
+      const overlayRect = el('rect', {
+        x: ox, y: oy,
+        width: ow, height: oh,
+        rx: 5, ry: 5,
+        fill: bgColor.replace(/[\d.]+\)$/, revealed ? '0.7)' : '0.6)')
+      });
+      if (!revealed) {
+        overlayRect.style.cursor = 'pointer';
+      }
+      overlayRect.dataset.regionIndex = i;
+      regionGroup.appendChild(overlayRect);
+
+      // Value label in center of the region
+      const area = pr.cells.length;
+      if (area > 1) {
+        const valText = el('text', {
+          x: ox + ow / 2,
+          y: oy + oh / 2 + oh * 0.08,
+          'font-size': Math.max(9, Math.floor(Math.min(ow, oh) * 0.25)),
+          'font-weight': '600',
+          fill: '#2D3142',
+          class: 'cell-label',
+          opacity: '0.7'
+        });
+        valText.textContent = area;
+        regionGroup.appendChild(valText);
+      }
+    }
+
+    svg.appendChild(regionGroup);
+  }
+
+  // --- bind events ---------------------------------------------------------
+  if (!revealed && !S._listenersBound) {
+    container.addEventListener('pointerdown', onPointerDown);
+    container.addEventListener('pointermove', onPointerMove);
+    container.addEventListener('pointerup', onPointerUp);
+    S._listenersBound = true;
+
+    if (S.playerRegions.length === 0) {
+      container.addEventListener('touchstart', preventTouch, { passive: false });
+    }
+  } else if (revealed) {
+    container.removeEventListener('pointerdown', onPointerDown);
+    container.removeEventListener('pointermove', onPointerMove);
+    container.removeEventListener('pointerup', onPointerUp);
+    S._listenersBound = false;
+  }
+
+  updateHintsDisplay();
+}
+
+// Touch-prevent helper (named so it can be removed/re-added)
+function preventTouch(e) { e.preventDefault(); }
+
+// ============================================================
+// DRAG-TO-DRAW — Fixed: movement threshold + container events
+// ============================================================
+let drawing = false;
+let revealed = false;
+let startIdx = -1;
+let startRegionIdx = -1; // tapped region (for removal)
+let drawCells = new Set();
+let previewEl = null;
+let hasMoved = false; // whether pointer crossed the drag threshold
+const DRAW_THRESHOLD = 20; // px before we treat it as a drag
+let tapStartX = 0, tapStartY = 0; // pointer position when region tap-down happened
+
+/** Find cell at screen coordinates using math (avoids getBoundingClientRect rounding). */
+function getCellAtPos(x, y) {
+  const container = document.getElementById('grid-container');
+  const cx = container.getBoundingClientRect();
+
+  // Relative to the container's origin
+  const relX = x - cx.left;
+  const relY = y - cx.top;
+
+  // Subtract outer PADDING
+  const innerX = relX - PADDING;
+  const innerY = relY - PADDING;
+
+  if (innerX < 0 || innerY < 0) return -1;
+
+  // Grid dimensions in pixels
+  const gridW_px = S.gridW * cellSize + (S.gridW - 1) * CELL_GAP;
+  const gridH_px = S.gridH * cellSize + (S.gridH - 1) * CELL_GAP;
+
+  if (innerX > gridW_px || innerY > gridH_px) return -1;
+
+  // Column and row from math, not DOM
+  const c = Math.floor(innerX / (cellSize + CELL_GAP));
+  const r = Math.floor(innerY / (cellSize + CELL_GAP));
+
+  if (r < 0 || r >= S.gridH || c < 0 || c >= S.gridW) return -1;
+
+  // Bounds check: SVG rect spans [cellLeft, cellLeft + cellSize] inclusive
+  const cellLeft = PADDING + c * (cellSize + CELL_GAP);
+  const cellTop = PADDING + r * (cellSize + CELL_GAP);
+
+  if (relX < cellLeft || relX > cellLeft + cellSize) return -1;
+  if (relY < cellTop || relY > cellTop + cellSize) return -1;
+
+  return rcToIdx(r, c, S.gridW);
+}
+
+function onPointerDown(e) {
+  e.preventDefault();
+  const target = e.target;
+
+  // Region overlay tap → remove candidate
+  const regionEl = target.closest('rect[data-region-index]');
+  if (regionEl) {
+    startRegionIdx = parseInt(regionEl.dataset.regionIndex);
+    drawing = true;
+    hasMoved = false;
+    tapStartX = e.clientX;
+    tapStartY = e.clientY;
+    return;
+  }
+
+  // Match SVG rects with data-idx
+  const cellEl = target.closest('rect[data-idx]');
+  if (!cellEl || drawing) return;
+
+  startIdx = parseInt(cellEl.dataset.idx);
+  if (isNaN(startIdx)) return;
+
+  drawing = true;
+  drawCells.add(startIdx);
+  hasMoved = false; // will be set to true once pointer moves past threshold
+}
+
+function onPointerMove(e) {
+  if (!drawing) return;
+
+  // Tapping a region: track movement so onPointerUp knows tap vs drag
+  if (startRegionIdx >= 0) {
+    if (!hasMoved) {
+      const dist = Math.sqrt((e.clientX - tapStartX) ** 2 + (e.clientY - tapStartY) ** 2);
+      if (dist > DRAW_THRESHOLD) hasMoved = true;
+    }
+    return; // never draw cells from a region tap
+  }
+
+  // Check if we've moved enough to qualify as a drag
+  if (!hasMoved) {
+    const [sr, sc] = idxToRC(startIdx, S.gridW);
+    const containerRect = document.getElementById('grid-container').getBoundingClientRect();
+    const cx = containerRect.left + PADDING + sc * (cellSize + CELL_GAP) + cellSize / 2;
+    const cy = containerRect.top + PADDING + sr * (cellSize + CELL_GAP) + cellSize / 2;
+    const dist = Math.sqrt((e.clientX - cx) ** 2 + (e.clientY - cy) ** 2);
+    if (dist > DRAW_THRESHOLD) hasMoved = true;
+  }
+
+  if (!hasMoved) return; // still a tap — don't update preview
+
+  const idx = getCellAtPos(e.clientX, e.clientY);
+  if (idx < 0) return;
+
+  // Rebuild drawCells from the bounding rect of start and current positions
+  const [startR, startC] = idxToRC(startIdx, S.gridW);
+  const [curR, curC] = idxToRC(idx, S.gridW);
+  const minR = Math.min(startR, curR), maxR = Math.max(startR, curR);
+  const minC = Math.min(startC, curC), maxC = Math.max(startC, curC);
+
+  drawCells.clear();
+  for (let r = minR; r <= maxR; r++) {
+    for (let c = minC; c <= maxC; c++) {
+      drawCells.add(rcToIdx(r, c, S.gridW));
+    }
+  }
+
+  updatePreview();
+}
+
+function onPointerUp(e) {
+  if (!drawing) return;
+  drawing = false;
+
+  // --- tap-to-remove region (overlay was tapped directly) ---
+  if (!hasMoved && startRegionIdx >= 0) {
+    S.history.push(S.playerRegions.map(pr => ({ cells: [...pr.cells] })));
+    S.playerRegions.splice(startRegionIdx, 1);
+    clearPreview();
+    drawCells.clear();
+    startRegionIdx = -1;
+    hasMoved = false;
+    drawing = false;
+    renderGrid();
+    renderGuide();
+    return;
+  }
+
+  // Region was dragged away from (started as tap, now dragging) — remove the region
+  if (hasMoved && startRegionIdx >= 0) {
+    S.history.push(S.playerRegions.map(pr => ({ cells: [...pr.cells] })));
+    S.playerRegions.splice(startRegionIdx, 1);
+    clearPreview();
+    drawCells.clear();
+    startRegionIdx = -1;
+    hasMoved = false;
+    drawing = false;
+    renderGrid();
+    renderGuide();
+    return;
+  }
+
+  if (!hasMoved && startIdx >= 0) {
+    // TAP — check if clicking an existing region to remove it (cell underneath overlay)
+    const regionIdx = S.playerRegions.findIndex(pr => pr.cells.includes(startIdx));
+    if (regionIdx >= 0) {
+      // Remove the region and save to history
+      S.history.push(S.playerRegions.map(pr => ({ cells: [...pr.cells] })));
+      S.playerRegions.splice(regionIdx, 1);
+      renderGrid();
+      renderGuide();
+      clearPreview();
+      drawCells.clear();
+      return; // don't fall through to creation logic
+    }
+    // Otherwise: create a single-cell region if not already claimed and has an emoji
+    const hasEmoji = S.cellEmojis[startIdx] !== '';
+    const occupied = S.playerRegions.some(pr => pr.cells.includes(startIdx));
+    if (!occupied && hasEmoji) {
+      S.history.push(S.playerRegions.map(pr => ({ cells: [...pr.cells] })));
+      S.playerRegions.push({ cells: [startIdx] });
+      renderGrid();
+      renderGuide();
+    }
+  } else if (hasMoved) {
+    // DRAG — commit the drawn region
+    commitDrawnRegion();
+  }
+
+  clearPreview();
+  drawCells.clear();
+}
+
+function updatePreview() {
+  clearPreview();
+  if (drawCells.size === 0) return;
+
+  // Compute bounding rect of drawn cells
+  let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
+  for (const idx of drawCells) {
+    const [r, c] = idxToRC(idx, S.gridW);
+    if (r < minR) minR = r; if (r > maxR) maxR = r;
+    if (c < minC) minC = c; if (c > maxC) maxC = c;
+  }
+
+  // Must be a perfect rectangle
+  const expectedCount = (maxR - minR + 1) * (maxC - minC + 1);
+  if (drawCells.size !== expectedCount) return;
+
+  for (let r = minR; r <= maxR; r++) {
+    for (let c = minC; c <= maxC; c++) {
+      if (!drawCells.has(rcToIdx(r, c, S.gridW))) return;
+    }
+  }
+
+  // Position preview using computed layout
+  const container = document.getElementById('grid-container');
+  const firstIdx = rcToIdx(minR, minC, S.gridW);
+  const [firstRR, firstCC] = idxToRC(firstIdx, S.gridW);
+  const lastIdx = rcToIdx(maxR, maxC, S.gridW);
+  const [lastRR, lastCC] = idxToRC(lastIdx, S.gridW);
+
+  const pxLeft = PADDING + firstCC * (cellSize + CELL_GAP);
+  const pyTop = PADDING + firstRR * (cellSize + CELL_GAP);
+  const pxWidth = (lastCC - firstCC + 1) * cellSize + (lastCC - firstCC) * CELL_GAP;
+  const pxHeight = (lastRR - firstRR + 1) * cellSize + (lastRR - firstRR) * CELL_GAP;
+
+  previewEl = document.createElement('div');
+  previewEl.className = 'draw-preview';
+  previewEl.style.left = `${pxLeft}px`;
+  previewEl.style.top = `${pyTop}px`;
+  previewEl.style.width = `${pxWidth}px`;
+  previewEl.style.height = `${pxHeight}px`;
+
+  container.appendChild(previewEl);
+}
+
+function clearPreview() {
+  if (previewEl) { previewEl.remove(); previewEl = null; }
+}
+
+function commitDrawnRegion() {
+  const cells = [...drawCells].sort((a, b) => a - b);
+  if (cells.length === 0) return;
+
+  // Compute bounding rect
+  let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
+  for (const idx of cells) {
+    const [r, c] = idxToRC(idx, S.gridW);
+    if (r < minR) minR = r; if (r > maxR) maxR = r;
+    if (c < minC) minC = c; if (c > maxC) maxC = c;
+  }
+
+  // Validate rectangle shape
+  const area = cells.length;
+  if (area !== (maxR - minR + 1) * (maxC - minC + 1)) return;
+
+  // Check no overlap with existing player regions
+  for (const pr of S.playerRegions) {
+    for (const idx of pr.cells) {
+      if (cells.includes(idx)) return;
+    }
+  }
+
+  // Reject if none of the cells contain an emoji
+  const hasEmoji = cells.some(idx => S.cellEmojis[idx] !== '');
+  if (!hasEmoji) return;
+
+  // Reject if the region contains more than one distinct emoji
+  const foundEmojis = new Set(cells.map(idx => S.cellEmojis[idx]).filter(e => e !== ''));
+  if (foundEmojis.size > 1) return;
+
+  // Save to history and add region (no value validation — checked on completion)
+  S.history.push(S.playerRegions.map(pr => ({ cells: [...pr.cells] })));
+  S.playerRegions.push({ cells });
+
+  renderGrid();
+  renderGuide();
+  checkCompletion();
+}
+
+// ============================================================
+// COMPLETION CHECK — validate when all cells are covered
+// ============================================================
+function checkCompletion() {
+  const totalCells = S.gridW * S.gridH;
+  let covered = 0;
+  for (const pr of S.playerRegions) covered += pr.cells.length;
+
+  if (covered < totalCells) return; // Not all cells covered yet
+
+  // All cells covered — validate the solution
+  const isCorrect = validateSolution();
+
+  pauseTimer();
+  if (isCorrect) {
+    S.stats.solved++;
+    savePersisted();
+    showCompletion(true);
+  } else {
+    showCompletion(false);
+  }
+}
+
+function validateSolution() {
+  // Each player region must be a rectangle whose area matches the solution value of its cells
+  for (const pr of S.playerRegions) {
+    const area = pr.cells.length;
+    if (area === 0) return false;
+
+    let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
+    for (const idx of pr.cells) {
+      const [r, c] = idxToRC(idx, S.gridW);
+      if (r < minR) minR = r; if (r > maxR) maxR = r;
+      if (c < minC) minC = c; if (c > maxC) maxC = c;
+    }
+
+    // Must be a perfect rectangle
+    const expectedArea = (maxR - minR + 1) * (maxC - minC + 1);
+    if (area !== expectedArea) return false;
+
+    // All cells must share the same solution value, and area must match that value
+    const expectedValue = S.solutionCells[pr.cells[0]];
+    for (const idx of pr.cells) {
+      if (S.solutionCells[idx] !== expectedValue) return false;
+    }
+    if (area !== expectedValue) return false;
+  }
+
+  // Also verify no two regions overlap and all cells are covered (already guaranteed by the UI, but double-check)
+  const seen = new Set();
+  for (const pr of S.playerRegions) {
+    for (const idx of pr.cells) {
+      if (seen.has(idx)) return false;
+      seen.add(idx);
+    }
+  }
+  return seen.size === S.gridW * S.gridH;
+}
+
+function getCorrectRegions() {
+  // Return only the regions that are valid rectangles matching their solution value
+  const correct = [];
+  for (const pr of S.playerRegions) {
+    const area = pr.cells.length;
+    if (area === 0) continue;
+
+    let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
+    for (const idx of pr.cells) {
+      const [r, c] = idxToRC(idx, S.gridW);
+      if (r < minR) minR = r; if (r > maxR) maxR = r;
+      if (c < minC) minC = c; if (c > maxC) maxC = c;
+    }
+
+    const expectedArea = (maxR - minR + 1) * (maxC - minC + 1);
+    if (area !== expectedArea) continue;
+
+    const expectedValue = S.solutionCells[pr.cells[0]];
+    let valueOk = true;
+    for (const idx of pr.cells) {
+      if (S.solutionCells[idx] !== expectedValue) { valueOk = false; break; }
+    }
+    if (!valueOk || area !== expectedValue) continue;
+
+    correct.push(pr);
+  }
+  return correct;
+}
+
+function showCompletion(correct) {
+  const emojiEl = document.querySelector('.completion-emoji');
+  const titleEl = document.getElementById('complete-title');
+  const factText = document.getElementById('fact-text');
+  const actionBtn = document.getElementById('btn-complete-action');
+
+  if (correct) {
+    emojiEl.textContent = '🎉';
+    titleEl.textContent = 'Puzzle Solved!';
+    factText.textContent = 'Well done.';
+    actionBtn.textContent = '▶ Next Puzzle';
+    actionBtn.onclick = () => { pauseTimer(); startPuzzle(); };
+  } else {
+    emojiEl.textContent = '😕';
+    titleEl.textContent = 'Not Quite Right';
+    factText.textContent = 'Some regions don\'t match. Correct regions are kept — incorrect ones are removed.';
+    actionBtn.textContent = '↩ Resume';
+    actionBtn.onclick = () => { S.playerRegions = getCorrectRegions(); S.history = []; resumeTimer(); renderGrid(); renderGuide(); showScreen('game'); };
+  }
+
+  showScreen('complete');
+}
+
+// ============================================================
+// UNDO / HINTS
+// ============================================================
+function undo() {
+  if (S.history.length === 0) return;
+  S.playerRegions = S.history.pop();
+  renderGrid();
+  renderGuide();
+}
+
+function hint() {
+  if (S.hintsUsed >= S.maxHints || S.playerRegions.length > 0) return;
+
+  // Find first uncovered cell and reveal its region
+  const totalCells = S.gridW * S.gridH;
+  const covered = new Set();
+  for (const pr of S.playerRegions) for (const idx of pr.cells) covered.add(idx);
+
+  let targetIdx = -1;
+  for (let i = 0; i < totalCells; i++) {
+    if (!covered.has(i)) { targetIdx = i; break; }
+  }
+
+  if (targetIdx < 0) return;
+
+  const targetValue = S.solutionCells[targetIdx];
+
+  // Flood fill to find full region
+  const regionCells = [];
+  const visited = new Set();
+  const stack = [targetIdx];
+  while (stack.length > 0) {
+    const idx = stack.pop();
+    if (visited.has(idx)) continue;
+    if (S.solutionCells[idx] !== targetValue) continue;
+    visited.add(idx);
+    regionCells.push(idx);
+    const [r, c] = idxToRC(idx, S.gridW);
+    if (c + 1 < S.gridW && S.solutionCells[rcToIdx(r, c + 1, S.gridW)] === targetValue) stack.push(rcToIdx(r, c + 1, S.gridW));
+    if (c - 1 >= 0 && S.solutionCells[rcToIdx(r, c - 1, S.gridW)] === targetValue) stack.push(rcToIdx(r, c - 1, S.gridW));
+    if (r + 1 < S.gridH && S.solutionCells[rcToIdx(r + 1, c, S.gridW)] === targetValue) stack.push(rcToIdx(r + 1, c, S.gridW));
+    if (r - 1 >= 0 && S.solutionCells[rcToIdx(r - 1, c, S.gridW)] === targetValue) stack.push(rcToIdx(r - 1, c, S.gridW));
+  }
+
+  S.history.push(S.playerRegions.map(pr => ({ cells: [...pr.cells] })));
+  S.playerRegions.push({ cells: regionCells });
+  S.hintsUsed++;
+
+  renderGrid();
+  checkCompletion();
+}
+
+function revealSolution() {
+  if (!confirm('Reveal the solution? This ends the puzzle.')) return;
+  stopTimer();
+  revealed = true;
+
+  // Copy all solution regions into playerRegions (each region as one entry)
+  S.playerRegions = S.regions.map(r => ({ cells: [...r.cells] }));
+  S.history = [];
+  startRegionIdx = -1;
+  renderGrid();
+  renderGuide();
+  document.getElementById('guide-panel').classList.add('disabled');
+  updateHintsDisplay();
+  disableControls(true);
+
+  // Show a toast message over the game screen
+  showToast('Solution revealed! Study the regions carefully.', 3000);
+}
+
+function disableControls(disabled) {
+  document.getElementById('btn-undo').disabled = disabled;
+  document.getElementById('btn-hint').disabled = disabled;
+  document.getElementById('btn-reveal').disabled = disabled;
+  document.getElementById('btn-clear').disabled = disabled;
+}
+
+// ============================================================
+// GUIDE PANEL — per-emoji guess tracking
+// ============================================================
+function computeGuesses() {
+  const guesses = {};
+  for (const pr of S.playerRegions) {
+    // Find the actual emoji cell in this region (the one with a non-empty emoji)
+    const emojiIdx = pr.cells.find(idx => S.cellEmojis[idx] !== '');
+    const emoji = emojiIdx != null ? S.cellEmojis[emojiIdx] : '';
+    if (!guesses[emoji]) guesses[emoji] = [];
+    guesses[emoji].push(pr.cells.length);
+  }
+  return guesses;
+}
+
+function renderGuide() {
+  const table = document.getElementById('guide-table');
+  if (!table) return;
+
+  // Collect unique emojis from the grid, sorted by their solution value (ascending)
+  const emojiSet = new Set(S.cellEmojis);
+  const entries = [...emojiSet].map(e => ({
+    emoji: e,
+    value: S.reverseMap[e] ?? 0
+  }));
+  entries.sort((a, b) => a.value - b.value);
+
+  const guesses = computeGuesses();
+
+  // Find which guess values are shared by multiple emojis (for yellow highlight)
+  const valueCounts = {};
+  for (const emoji of Object.keys(guesses)) {
+    for (const size of guesses[emoji]) {
+      const key = `${emoji}→${size}`;
+      valueCounts[key] = (valueCounts[key] || 0) + 1;
+    }
+  }
+
+  // Build rows
+  let html = '';
+  for (const { emoji, value } of entries) {
+    const sizes = guesses[emoji] || [];
+    const guessText = sizes.length > 0 ? sizes.join(' + ') : '—';
+
+    // Check for conflict: multiple different sizes for same emoji
+    const uniqueSizes = [...new Set(sizes)];
+    const hasConflict = uniqueSizes.length > 1;
+
+    // Check for duplicate guess: another emoji also guessed this exact size
+    let isDuplicate = false;
+    if (sizes.length > 0) {
+      for (const size of sizes) {
+        const key = `${emoji}→${size}`;
+        // Count how many *different* emojis have guessed this same size
+        let emojiCount = 0;
+        for (const e2 of Object.keys(guesses)) {
+          if (guesses[e2].includes(size)) emojiCount++;
+        }
+        if (emojiCount > 1) { isDuplicate = true; break; }
+      }
+    }
+
+    const rowClass = [];
+    if (hasConflict) rowClass.push('guide-conflict');
+    if (isDuplicate) rowClass.push('guide-duplicate');
+
+    html += `<tr class="${rowClass.join(' ')}">`;
+    html += `<td class="guide-emoji">${emoji}</td>`;
+    html += `<td class="guide-guess">${guessText}${hasConflict ? ' ⚠' : ''}</td>`;
+    html += '</tr>';
+  }
+
+  table.innerHTML = html;
+}
+
+function showToast(message, duration) {
+  // Remove any existing toast
+  const existing = document.getElementById('game-toast');
+  if (existing) existing.remove();
+
+  const toast = document.createElement('div');
+  toast.id = 'game-toast';
+  Object.assign(toast.style, {
+    position: 'absolute', top: '50%', left: '50%',
+    transform: 'translate(-50%, -50%)',
+    background: 'var(--bg)', color: 'var(--fg)',
+    padding: '16px 24px', borderRadius: '12px',
+    border: '2px solid var(--accent)',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+    zIndex: '50', fontSize: '1.1rem', fontWeight: '600',
+    textAlign: 'center', pointerEvents: 'none'
+  });
+  toast.textContent = message;
+
+  const header = document.getElementById('game-header');
+  if (header) header.appendChild(toast);
+  setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.5s'; }, duration);
+  setTimeout(() => { if (toast.parentNode) toast.remove(); }, duration + 600);
+}
+
+// ============================================================
+// TIMER
+// ============================================================
+function startTimer() { stopTimer(); S.timerInterval = setInterval(() => { S.timer++; document.getElementById('timer').textContent = formatTime(S.timer); }, 1000); }
+function stopTimer() { if (S.timerInterval) { clearInterval(S.timerInterval); S.timerInterval = null; } }
+function pauseTimer() { stopTimer(); S._timerPausedAt = S.timer; }
+function resumeTimer() { S.timer = S._timerPausedAt || 0; startTimer(); }
+function updateHintsDisplay() { const rem = S.maxHints - S.hintsUsed; document.getElementById('hints-display').textContent = S.playerRegions.length === 0 ? `💡 ${rem}` : ''; }
+
+// ============================================================
+// TUTORIAL
+// ============================================================
+const TUTORIAL_STEPS = [
+  {
+    title: "What is Shikaku?",
+    emoji: "🧩",
+    text: "A rectangular grid must be divided into rectangle regions. Each region contains exactly one number, and the area of the rectangle equals that number."
+  },
+  {
+    title: "The Emoji Twist",
+    emoji: "🎲",
+    text: "The numbers are now emojis! Each emoji represents a different number and the mapping is random for each puzzle.",
+    hasDemo: true
+  },
+  {
+    title: "How to Draw",
+    emoji: "✋",
+    text: "Click and drag across cells to select a rectangle. Release when the area matches the hidden number. Each region must be a perfect rectangle and contain only a single emoji."
+  },
+  {
+    title: "Marking Emojis",
+    emoji: "📌",
+    text: "Click an individual emoji (when no drawing is in progress) to mark what value you think it represents. Confirmed emojis get a pink ring."
+  },
+  {
+    title: "Random Emoji Position",
+    emoji: "🔀",
+    text: "By default, the emoji will always be in the top-left corner of the region. Go to Settings and enable 'Random Emoji Position' for a real challenge! In this mode, (as in traditional Shikaku) each emoji is placed on a random cell within its region — not always in the same spot. You'll need to rely on area logic instead of position hints."
+  },
+  {
+    title: "Ready!",
+    emoji: "🚀",
+    text: "Use 💡 Hint for help, ↩ Undo if you make a mistake. Click Play and have fun!"
+  }
+];
+
+let tutStep = 0;
+
+function showTutorial() { tutStep = 0; renderTutorial(); showScreen('tutorial'); }
+
+function renderTutorial() {
+  const step = TUTORIAL_STEPS[tutStep];
+  const content = document.getElementById('tutorial-content');
+
+  let demoHTML = '';
+  if (step.hasDemo) {
+    demoHTML = `<div class="tutorial-pair">
+      <div class="tutorial-box"><div class="label">Numbers</div>
+        <div class="mini-grid" style="grid-template-columns:repeat(3,48px);">
+          ${'<div class="mini-cell">6</div>'.repeat(6)}${'<div class="mini-cell">1</div>'}${'<div class="mini-cell">2</div>'.repeat(2)}
+        </div>
+      </div>
+      <div class="tutorial-box"><div class="label">Emojis</div>
+        <div class="mini-grid" style="grid-template-columns:repeat(3,48px);">
+          ${'<div class="mini-cell">🍎</div>'.repeat(6)}${'<div class="mini-cell">⭐</div>'}${'<div class="mini-cell">🌸</div>'.repeat(2)}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  content.innerHTML = `
+    <h2 style="margin-bottom:12px;">${step.title}</h2>
+    <div class="tutorial-emoji">${step.emoji}</div>
+    <p class="tutorial-text">${step.text}</p>
+    ${demoHTML}
+    <div class="tutorial-nav">
+      ${tutStep > 0 ? '<button class="nav-btn secondary-tut" id="tut-prev">← Back</button>' : ''}
+      <button class="nav-btn primary" id="tut-next">${tutStep < TUTORIAL_STEPS.length - 1 ? 'Next →' : "Let's Play! 🎉"}</button>
+    </div>
+  `;
+
+  document.getElementById('tut-prev')?.addEventListener('click', () => { tutStep--; renderTutorial(); });
+  document.getElementById('tut-next').addEventListener('click', () => {
+    if (tutStep < TUTORIAL_STEPS.length - 1) { tutStep++; renderTutorial(); }
+    else showScreen('menu');
+  });
+}
+
+// ============================================================
+// STATS
+// ============================================================
+function showStats() {
+  const avg = S.stats.times.length > 0 ? Math.round(S.stats.times.reduce((a, b) => a + b, 0) / S.stats.times.length) : 0;
+  document.getElementById('stats-content').innerHTML = `
+    <div class="stat-card"><div class="stat-value">${S.stats.solved}</div><div class="stat-label">Solved</div></div>
+    <div class="stat-card"><div class="stat-value">${S.stats.streak}</div><div class="stat-label">Streak</div></div>
+    <div class="stat-card"><div class="stat-value">${formatTime(avg)}</div><div class="stat-label">Average</div></div>
+    <div class="stat-card"><div class="stat-value">${S.stats.facts.length}</div><div class="stat-label">Facts</div></div>
+  `;
+  S.selectedScreenBeforeSettings = S.screen;
+  showScreen('stats');
+}
+
+// ============================================================
+// SETTINGS
+// ============================================================
+function showSettings() {
+  const dt = document.getElementById('toggle-dark');
+  dt.classList.toggle('active', S.darkMode);
+  const nt = document.getElementById('toggle-numbers');
+  nt.classList.toggle('active', S.showNumbers);
+  const rt = document.getElementById('toggle-random-emoji');
+  rt.classList.toggle('active', S.randomEmojiPos);
+  S.selectedScreenBeforeSettings = S.screen;
+  showScreen('settings');
+}
+
+function toggleDark() {
+  S.darkMode = !S.darkMode;
+  document.body.classList.toggle('dark', S.darkMode);
+  savePersisted();
+}
+
+function toggleNumbers() {
+  S.showNumbers = !S.showNumbers;
+}
+
+// ============================================================
+// EVENT LISTENERS (DOMContentLoaded)
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+  loadPersisted();
+
+  // Apply dark mode
+  if (S.darkMode) document.body.classList.add('dark');
+
+  // Difficulty buttons
+  document.querySelectorAll('.diff-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      S.difficulty = btn.dataset.diff;
+    });
+  });
+
+  // Menu → Game
+  document.getElementById('btn-play').addEventListener('click', startPuzzle);
+
+  // Tutorial
+  document.getElementById('btn-tutorial').addEventListener('click', showTutorial);
+
+  // Back to menu from game
+  document.getElementById('btn-back').addEventListener('click', () => { stopTimer(); showScreen('menu'); });
+
+  // Undo
+  document.getElementById('btn-undo').addEventListener('click', undo);
+
+  // Hint
+  document.getElementById('btn-hint').addEventListener('click', hint);
+
+  // Reveal
+  document.getElementById('btn-reveal').addEventListener('click', revealSolution);
+
+  // Clear all regions
+  document.getElementById('btn-clear').addEventListener('click', () => { S.playerRegions = []; renderGrid(); renderGuide(); });
+
+  // Next puzzle (correct solution) — wired inline in showCompletion
+
+  // Complete → menu
+  document.getElementById('btn-complete-menu').addEventListener('click', () => showScreen('menu'));
+
+  // Stats
+  document.getElementById('btn-stats').addEventListener('click', showStats);
+  document.getElementById('btn-stats-back').addEventListener('click', () => {
+    const prev = S.selectedScreenBeforeSettings || 'menu';
+    showScreen(prev);
+  });
+
+  // Settings
+  document.getElementById('btn-settings').addEventListener('click', showSettings);
+  document.getElementById('btn-settings-back').addEventListener('click', () => {
+    const prev = S.selectedScreenBeforeSettings || 'menu';
+    showScreen(prev);
+  });
+
+  // Theme toggle (header)
+  document.getElementById('btn-theme').addEventListener('click', toggleDark);
+
+  // Settings toggles
+  document.getElementById('toggle-dark').addEventListener('click', () => {
+    S.darkMode = !S.darkMode;
+    document.body.classList.toggle('dark', S.darkMode);
+    const t = document.getElementById('toggle-dark');
+    t.classList.toggle('active', S.darkMode);
+    savePersisted();
+  });
+
+  document.getElementById('toggle-numbers').addEventListener('click', () => {
+    S.showNumbers = !S.showNumbers;
+    document.getElementById('toggle-numbers').classList.toggle('active', S.showNumbers);
+  });
+
+  document.getElementById('toggle-random-emoji').addEventListener('click', () => {
+    S.randomEmojiPos = !S.randomEmojiPos;
+    document.getElementById('toggle-random-emoji').classList.toggle('active', S.randomEmojiPos);
+    savePersisted();
+  });
+
+  // Keyboard: Escape to close panel, Ctrl+Z for undo
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      document.getElementById('emoji-panel').classList.remove('visible');
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+      e.preventDefault();
+      undo();
+    }
+  });
+
+  // Prevent default touch behaviors on grid
+  const gridContainer = document.getElementById('grid-container');
+  gridContainer.addEventListener('touchstart', e => { if (S.playerRegions.length === 0) e.preventDefault(); }, { passive: false });
+
+  // Debounced resize handler for SVG grid
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      if (S.screen === 'game') {
+        gridW_px = 0; gridH_px = 0; // force recompute on next renderGrid()
+        renderGrid();
+      }
+    }, 150);
+  });
+});
+</script>
+</body>
+</html>
