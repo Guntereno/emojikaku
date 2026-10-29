@@ -58,7 +58,6 @@ body {
 
 #app {
   width: 100%;
-  max-width: 520px;
   padding: 12px 16px;
   display: flex;
   flex-direction: column;
@@ -155,10 +154,28 @@ header h1 { font-size: 1.4rem; font-weight: 700; }
 
 /* ---- Game Layout ---- */
 #game-layout {
-  display: flex; gap: 16px; align-items: flex-start; width: 100%;
+  display: flex; gap: 16px; align-items: flex-start; justify-content: center; width: 100%;
+  flex: 1;                         /* fill vertical space between header & controls */
 }
 
-#grid-container { flex-shrink: 0; }
+#grid-container { 
+  flex-shrink: 0;                   /* keep our computed size, don't let flex shrink it */
+  overflow: hidden;                 /* clip any SVG content that might bleed */
+}
+
+/* Minimum grid dimensions — ensures flexbox always sees a sized container */
+@media (min-width: 500px) {
+  #grid-container { min-width: 80px; }
+}
+
+/* In column mode, let the grid fill available width */
+@media (max-width: 700px) {
+  #grid-container {
+    flex: 1;
+    max-width: 100%;
+    width: 100%;
+  }
+}
 
 #guide-panel {
   flex-shrink: 0; min-width: 80px;
@@ -217,6 +234,7 @@ header h1 { font-size: 1.4rem; font-weight: 700; }
 #grid-container {
   position: relative;
   touch-action: none;
+  overflow: hidden;
 }
 
 #game-grid-svg {
@@ -325,6 +343,27 @@ header h1 { font-size: 1.4rem; font-weight: 700; }
 .complete-time { margin: 12px 0; opacity: 0.6; }
 
 /* ---- Responsive ---- */
+
+/* Stack guide panel below grid on narrow screens */
+@media (max-width: 700px) {
+  #game-layout {
+    flex-direction: column;
+    align-items: center;
+  }
+  #grid-container {
+    flex: 1;
+    max-width: 100%;
+  }
+  #guide-panel {
+    min-width: unset;
+    width: 100%;
+    max-width: 400px;
+  }
+  #guide-table {
+    font-size: 0.75rem;
+  }
+}
+
 @media (max-width: 380px) {
   .mini-cell { width: 42px; height: 42px; font-size: 1.1rem; }
 }
@@ -747,20 +786,37 @@ function startPuzzle() {
 const CELL_GAP = 2;       // gap between cells inside the grid
 const PADDING = 4;        // padding around grid content inside SVG
 
-// Cached layout state — only recomputed on resize or puzzle start, not every render
-let cellSize = 56;
-let gridW_px = 0, gridH_px = 0;
+// Vertical chrome offsets — header + controls bar eat into viewport height
+const HEADER_H = 56;            // game-header + margins
+const CONTROLS_H = 72;          // button row + margins
+const VIEWPORT_MARGIN = 12;     // small safety buffer
 
-function computeGridSize(force = false) {
-  if (!force && gridW_px > 0 && S.gridW > 0 && S.gridH > 0) return;
+function computeGridSize() {
   const container = document.getElementById('grid-container');
   const rect = container.getBoundingClientRect();
   const w = S.gridW, h = S.gridH;
-  const availW = rect.width || Math.min(56 * w + PADDING * 2, window.innerWidth - 32);
-  const availH = rect.height || Math.min(56 * h + PADDING * 2, window.innerHeight - 180);
+
+  // Hard viewport bounds (what fits on screen minus chrome)
+  const maxGridW = window.innerWidth - VIEWPORT_MARGIN * 2;
+  let maxGridH = window.innerHeight - HEADER_H - CONTROLS_H - VIEWPORT_MARGIN * 2;
+
+  let availW, availH;
+
+  if (window.innerWidth <= 700) {
+    // Column mode: grid fills full width minus padding.
+    // Height is viewport minus header/controls — the guide panel will render below.
+    availW = Math.min(window.innerWidth - 32, maxGridW) - 8;
+    availH = maxGridH - 8;
+  } else {
+    // Row mode: grid shares width with guide panel side by side.
+    const guidePanel = document.getElementById('guide-panel');
+    const guideRect = guidePanel.getBoundingClientRect();
+    const guideW = Math.max(guideRect.width, 160); // minimum guide panel width
+    availW = Math.min(window.innerWidth - 32 - guideW - 16, maxGridW - guideW) - 8; // gap=16
+    availH = maxGridH - 8;
+  }
+
   cellSize = Math.max(1, Math.floor(Math.min((availW - PADDING * 2) / w, (availH - PADDING * 2) / h)));
-  gridW_px = w * cellSize + (w - 1) * CELL_GAP;
-  gridH_px = h * cellSize + (h - 1) * CELL_GAP;
 }
 
 function renderGrid() {
@@ -770,6 +826,8 @@ function renderGrid() {
 
   // --- sizing --------------------------------------------------
   computeGridSize();
+  const gridW_px = S.gridW * cellSize + (S.gridW - 1) * CELL_GAP;
+  const gridH_px = S.gridH * cellSize + (S.gridH - 1) * CELL_GAP;
   const svgW = PADDING * 2 + gridW_px;
   const svgH = PADDING * 2 + gridH_px;
 
@@ -820,7 +878,7 @@ function renderGrid() {
     for (const idx of S.playerRegions[i].cells) cellRegion[idx] = i;
   }
 
-  // --- layer 1: cells (filled rounded rects + emoji text) ------
+  // --- layer 1: cell background rects only (no emoji text) ------
   const cellGroup = el('g', { class: 'cells-layer' });
 
   for (let r = 0; r < h; r++) {
@@ -848,20 +906,6 @@ function renderGrid() {
       rect.style.cursor = 'pointer';
       rect.dataset.idx = idx;
       cellGroup.appendChild(rect);
-
-      // Emoji text (only on anchor cells that have an emoji)
-      const emoji = S.cellEmojis[idx];
-      if (emoji) {
-        const fontSize = Math.max(8, Math.floor(cellSize * 0.5));
-        const text = el('text', {
-          x: cx + cellSize / 2,
-          y: cy + cellSize / 2,
-          'font-size': fontSize,
-          class: 'cell-label'
-        });
-        text.textContent = emoji;
-        cellGroup.appendChild(text);
-      }
     }
   }
 
@@ -925,6 +969,29 @@ function renderGrid() {
 
     svg.appendChild(regionGroup);
   }
+
+  // --- layer 3: emoji text (on top of everything so they're always visible) --
+  const emojiGroup = el('g', { class: 'emoji-layer' });
+  for (let r = 0; r < h; r++) {
+    for (let c = 0; c < w; c++) {
+      const idx = rcToIdx(r, c, w);
+      const cx = PADDING + c * (cellSize + CELL_GAP);
+      const cy = PADDING + r * (cellSize + CELL_GAP);
+      const emoji = S.cellEmojis[idx];
+      if (emoji) {
+        const fontSize = Math.max(8, Math.floor(cellSize * 0.5));
+        const text = el('text', {
+          x: cx + cellSize / 2,
+          y: cy + cellSize / 2,
+          'font-size': fontSize,
+          class: 'cell-label'
+        });
+        text.textContent = emoji;
+        emojiGroup.appendChild(text);
+      }
+    }
+  }
+  svg.appendChild(emojiGroup);
 
   // --- bind events ---------------------------------------------------------
   if (!revealed && !S._listenersBound) {
@@ -1428,8 +1495,8 @@ function renderGuide() {
   const table = document.getElementById('guide-table');
   if (!table) return;
 
-  // Collect unique emojis from the grid, sorted by their solution value (ascending)
-  const emojiSet = new Set(S.cellEmojis);
+  // Collect unique emojis from the grid (skip blanks), sorted by their solution value (ascending)
+  const emojiSet = new Set(S.cellEmojis.filter(e => e !== ''));
   const entries = [...emojiSet].map(e => ({
     emoji: e,
     value: S.reverseMap[e] ?? 0
@@ -1737,10 +1804,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      if (S.screen === 'game') {
-        gridW_px = 0; gridH_px = 0; // force recompute on next renderGrid()
-        renderGrid();
-      }
+      if (S.screen === 'game') renderGrid();
     }, 150);
   });
 });
