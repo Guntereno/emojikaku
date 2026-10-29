@@ -463,10 +463,6 @@ header h1 { font-size: 1.4rem; font-weight: 700; }
           <span>Show Numbers on Reveal</span>
           <div class="toggle-track active" id="toggle-numbers"></div>
         </div>
-        <div class="setting-row">
-          <span>Random Emoji Position</span>
-          <div class="toggle-track" id="toggle-random-emoji"></div>
-        </div>
       </div>
       <button class="secondary-btn" id="btn-settings-back">← Back</button>
     </div>
@@ -516,9 +512,8 @@ const EMOJI_POOL = [
 let S = {
   screen: 'menu',
   difficulty: 'easy',
-  darkMode: false,
+  darkMode: true,
   showNumbers: true,
-  randomEmojiPos: false,
   // Puzzle data
   gridW: 0, gridH: 0,
   cells: null,          // [[emoji|number], ...] flat or 2D
@@ -715,13 +710,8 @@ function buildEmojiPuzzle(w, h, division) {
 
   for (const region of division.regions) {
     let anchorIdx;
-    if (S.randomEmojiPos) {
-      // Pick a random cell within the region for the emoji
-      anchorIdx = region.cells[Math.floor(Math.random() * region.cells.length)];
-    } else {
-      // Top-left is the anchor — this is where the emoji appears
-      anchorIdx = region.cells[0];
-    }
+    // Pick a random cell within the region for the emoji
+    anchorIdx = region.cells[Math.floor(Math.random() * region.cells.length)];
     solutionCells[anchorIdx] = region.value;
     cellEmojis[anchorIdx] = emojiMap[region.value];
 
@@ -1732,7 +1722,7 @@ const TUTORIAL_STEPS = [
   {
     title: "Random Emoji Position",
     emoji: "🔀",
-    text: "By default, the emoji will always be in the top-left corner of the region. Go to Settings and enable 'Random Emoji Position' for a real challenge! In this mode, (as in traditional Shikaku) each emoji is placed on a random cell within its region — not always in the same spot. You'll need to rely on area logic instead of position hints."
+    text: "Emojis are placed on random cells within their regions instead of always in the top-left corner. You'll need to rely on area logic instead of position hints — just like traditional Shikaku!"
   },
   {
     title: "Ready!",
@@ -1806,8 +1796,6 @@ function showSettings() {
   dt.classList.toggle('active', S.darkMode);
   const nt = document.getElementById('toggle-numbers');
   nt.classList.toggle('active', S.showNumbers);
-  const rt = document.getElementById('toggle-random-emoji');
-  rt.classList.toggle('active', S.randomEmojiPos);
   S.selectedScreenBeforeSettings = S.screen;
   showScreen('settings');
 }
@@ -1895,12 +1883,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('toggle-numbers').addEventListener('click', () => {
     S.showNumbers = !S.showNumbers;
     document.getElementById('toggle-numbers').classList.toggle('active', S.showNumbers);
-  });
-
-  document.getElementById('toggle-random-emoji').addEventListener('click', () => {
-    S.randomEmojiPos = !S.randomEmojiPos;
-    document.getElementById('toggle-random-emoji').classList.toggle('active', S.randomEmojiPos);
-    savePersisted();
   });
 
   // Keyboard: Escape to close panel, Ctrl+Z for undo
