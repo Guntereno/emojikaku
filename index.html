@@ -307,7 +307,6 @@ header h1 {
 }
 
 .timer { font-size: 1.15rem; font-weight: 600; font-variant-numeric: tabular-nums; }
-.hints-left { font-size: 0.85rem; opacity: 0.55; }
 
 #grid-container {
   position: relative;
@@ -544,7 +543,6 @@ header h1 {
       <div class="game-header">
         <button id="btn-back">← Menu</button>
         <span class="timer" id="timer">0:00</span>
-        <span class="hints-left" id="hints-display"></span>
       </div>
 
       <div id="game-layout">
@@ -557,7 +555,6 @@ header h1 {
 
       <div id="game-controls">
         <button class="ctrl-btn" id="btn-undo">↩ Undo</button>
-        <button class="ctrl-btn" id="btn-hint">💡 Hint</button>
         <button class="ctrl-btn" id="btn-reveal">🔍 Reveal</button>
         <button class="ctrl-btn" id="btn-clear">🗑 Clear</button>
       </div>
@@ -642,7 +639,6 @@ let S = {
   playerRegions: [],    // user-drawn [{ cells: [idx,...] }]
   history: [],          // undo snapshots of playerRegions
   guideGuesses: {},     // { emojiChar: [size1, size2, ...] }
-  hintsUsed: 0, maxHints: 3,
   timer: 0, timerInterval: null,
   stats: { solved: 0, streak: 0, times: [], facts: [] },
   selectedScreenBeforeSettings: 'menu',
@@ -896,7 +892,6 @@ function startPuzzle() {
   S.playerRegions = [];
   S.history = [];
   S.guideGuesses = {};
-  S.hintsUsed = 0;
   S.timer = 0;
   revealed = false;
   startRegionIdx = -1;
@@ -904,7 +899,6 @@ function startPuzzle() {
   renderGrid();
   document.getElementById('guide-panel').classList.remove('disabled');
   renderGuide();
-  updateHintsDisplay();
   startTimer();
   disableControls(false);
   showScreen('game');
@@ -1149,8 +1143,6 @@ function renderGrid() {
     container.removeEventListener('pointerup', onPointerUp);
     S._listenersBound = false;
   }
-
-  updateHintsDisplay();
 }
 
 // Touch-prevent helper (named so it can be removed/re-added)
@@ -1561,7 +1553,7 @@ function showCompletion(correct) {
 }
 
 // ============================================================
-// UNDO / HINTS
+// UNDO
 // ============================================================
 function undo() {
   if (S.history.length === 0) return;
@@ -1570,50 +1562,6 @@ function undo() {
   S.playerRegions = S.history.pop();
   renderGrid();
   renderGuide();
-}
-
-function hint() {
-  if (S.hintsUsed >= S.maxHints || S.playerRegions.length > 0) return;
-  _clearOverlays();
-  S._incorrectRegions = null;
-
-  // Find first uncovered cell and reveal its region
-  const totalCells = S.gridW * S.gridH;
-  const covered = new Set();
-  for (const pr of S.playerRegions) for (const idx of pr.cells) covered.add(idx);
-
-  let targetIdx = -1;
-  for (let i = 0; i < totalCells; i++) {
-    if (!covered.has(i)) { targetIdx = i; break; }
-  }
-
-  if (targetIdx < 0) return;
-
-  const targetValue = S.solutionCells[targetIdx];
-
-  // Flood fill to find full region
-  const regionCells = [];
-  const visited = new Set();
-  const stack = [targetIdx];
-  while (stack.length > 0) {
-    const idx = stack.pop();
-    if (visited.has(idx)) continue;
-    if (S.solutionCells[idx] !== targetValue) continue;
-    visited.add(idx);
-    regionCells.push(idx);
-    const [r, c] = idxToRC(idx, S.gridW);
-    if (c + 1 < S.gridW && S.solutionCells[rcToIdx(r, c + 1, S.gridW)] === targetValue) stack.push(rcToIdx(r, c + 1, S.gridW));
-    if (c - 1 >= 0 && S.solutionCells[rcToIdx(r, c - 1, S.gridW)] === targetValue) stack.push(rcToIdx(r, c - 1, S.gridW));
-    if (r + 1 < S.gridH && S.solutionCells[rcToIdx(r + 1, c, S.gridW)] === targetValue) stack.push(rcToIdx(r + 1, c, S.gridW));
-    if (r - 1 >= 0 && S.solutionCells[rcToIdx(r - 1, c, S.gridW)] === targetValue) stack.push(rcToIdx(r - 1, c, S.gridW));
-  }
-
-  S.history.push(S.playerRegions.map(pr => ({ cells: [...pr.cells] })));
-  S.playerRegions.push({ cells: regionCells });
-  S.hintsUsed++;
-
-  renderGrid();
-  checkCompletion();
 }
 
 function revealSolution() {
@@ -1630,7 +1578,6 @@ function revealSolution() {
   renderGrid();
   renderGuide();
   document.getElementById('guide-panel').classList.add('disabled');
-  updateHintsDisplay();
   disableControls(true);
 
   // Show a toast message over the game screen
@@ -1639,7 +1586,6 @@ function revealSolution() {
 
 function disableControls(disabled) {
   document.getElementById('btn-undo').disabled = disabled;
-  document.getElementById('btn-hint').disabled = disabled;
   document.getElementById('btn-reveal').disabled = disabled;
   document.getElementById('btn-clear').disabled = disabled;
 }
@@ -1811,7 +1757,6 @@ function startTimer() { stopTimer(); S.timerInterval = setInterval(() => { S.tim
 function stopTimer() { if (S.timerInterval) { clearInterval(S.timerInterval); S.timerInterval = null; } }
 function pauseTimer() { stopTimer(); S._timerPausedAt = S.timer; }
 function resumeTimer() { S.timer = S._timerPausedAt || 0; startTimer(); }
-function updateHintsDisplay() { const rem = S.maxHints - S.hintsUsed; document.getElementById('hints-display').textContent = S.playerRegions.length === 0 ? `💡 ${rem}` : ''; }
 
 // ============================================================
 // TUTORIAL
@@ -1834,19 +1779,9 @@ const TUTORIAL_STEPS = [
     text: "Click and drag across cells to select a rectangle. Release when the area matches the hidden number. Each region must be a perfect rectangle and contain only a single emoji."
   },
   {
-    title: "Marking Emojis",
-    emoji: "📌",
-    text: "Click an individual emoji (when no drawing is in progress) to mark what value you think it represents. Confirmed emojis get a pink ring."
-  },
-  {
-    title: "Random Emoji Position",
-    emoji: "🔀",
-    text: "Emojis are placed on random cells within their regions instead of always in the top-left corner. You'll need to rely on area logic instead of position hints — just like traditional Shikaku!"
-  },
-  {
     title: "Ready!",
     emoji: "🚀",
-    text: "Use 💡 Hint for help, ↩ Undo if you make a mistake. Click Play and have fun!"
+    text: "Use ↩ Undo if you make a mistake. Click Play and have fun!"
   }
 ];
 
@@ -1958,9 +1893,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Undo
   document.getElementById('btn-undo').addEventListener('click', undo);
-
-  // Hint
-  document.getElementById('btn-hint').addEventListener('click', hint);
 
   // Reveal
   document.getElementById('btn-reveal').addEventListener('click', revealSolution);

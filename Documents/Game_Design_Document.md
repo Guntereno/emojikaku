@@ -136,7 +136,7 @@ After generation, run these filters:
 │    │  h │  b  │  a  │ e   │          │
 │    └────┴─────┴─────┴─────┘          │
 │                                      │
-│  🖊️ Draw lines   💡 Hint   ⏮ Undo  │
+│  🖊️ Draw lines        ⏮ Undo      │
 │                                      │
 │  Difficulty: 🔵 Medium       ▶ Next │
 └──────────────────────────────────────┘
@@ -151,8 +151,9 @@ After generation, run these filters:
 | **Complete region** | Release finger / lift mouse when the rectangle is correct. | Region is drawn and stored. No immediate validation — regions are only checked when all cells are covered. |
 | **Cancel draw** | Tap away from the current rectangle or press Esc/Back. | Deselects without committing. |
 | **Undo** | Button or swipe gesture (or Ctrl+Z on desktop). | Reverses the last region placement; any regions drawn *inside* an undone region are also removed. |
-| **Hint**  | Hint button (limited per puzzle). | Reveals one correct division line or, at higher cost, reveals one emoji's true value. |
 | **Reveal solution**  | Button (shows divider). | Reveals all remaining divisions and maps; can be used only after giving up the puzzle. |
+
+There is no hint mechanic. Undo and Reveal are the only aids, and Reveal ends the puzzle.
 
 #### 5.3 Region management
 
@@ -172,7 +173,7 @@ The absence of a scratchpad or value-declaration system means players must reaso
 | Stat | Purpose |
 |------|---------|
 | **Puzzles solved** | Overall experience / level. |
-| **Streak** | Consecutive days with at least one solve → bonus hints. |
+| **Streak** | Consecutive days with at least one solve. |
 | **Personal best** | Fastest solve time per grid size / difficulty. |
 | **Weird facts** | Counts of memorable emoji-to-value combinations discovered on solved puzzles — surfaced as shareable cards at puzzle completion. |
 
@@ -180,7 +181,7 @@ The absence of a scratchpad or value-declaration system means players must reaso
 
 | Currency | Earned by | Spent on |
 |----------|-----------|----------|
-| 💎 Gems | Daily login, streaks, leaderboard finish | Extra hints, themed emoji packs (cosmetic only). |
+| 💎 Gems | Daily login, streaks, leaderboard finish | Themed emoji packs (cosmetic only). |
 
 ### 7. Visual & Audio Direction
 
@@ -222,7 +223,7 @@ Screen 4 — Scratchpad
     • Show how marks persist across attempts within the same puzzle.
 
 Screen 5 — First real puzzle (easy, 4×4)
-    • Full gameplay with hints auto-enabled for first solve.
+    • Full gameplay — no assistive aids; the player reasons from region sizes alone.
 ```
 
 ### 9. Technical Notes
