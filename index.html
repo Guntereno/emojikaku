@@ -689,126 +689,199 @@ function showScreen(name) {
 }
 
 // ============================================================
-// PUZZLE GENERATION — Proper Backtracking Shikaku Solver
+// PUZZLE GENERATION — accepted only when the clues force one division
 // ============================================================
+// The prover below counts every division a player could deduce from the rules
+// they are taught (rectangles covering the grid, one emoji value per region,
+// equal emojis sharing an area, different emojis having different areas).
+// Anything but exactly one is rejected as trial-and-error fodder and retried.
+const GEN_PLAN = {
+  easy:   { caps: [8, 6, 4],           nodeBudget: 20000,  maxProofs: 60 },
+  medium: { caps: [10, 8, 6],          nodeBudget: 60000,  maxProofs: 90 },
+  hard:   { caps: [12, 10, 8, 6],      nodeBudget: 120000, maxProofs: 130 },
+  expert: { caps: [14, 12, 10, 8, 6],  nodeBudget: 200000, maxProofs: 180 }
+};
+
 function generatePuzzle(difficulty) {
   const cfg = DIFFS[difficulty];
-  let attempts = 0;
-  const maxAttempts = 200;
+  const plan = GEN_PLAN[difficulty];
 
-  while (attempts < maxAttempts) {
-    attempts++;
-    const w = rand(cfg.minW, cfg.maxW);
-    const h = rand(cfg.minH, cfg.maxH);
+  // Shrinking the largest region constrains the division until the proof succeeds.
+  // The last attempt pins emojis to their region's top-left corner, which forces a
+  // unique division almost always; it is the escape hatch, not the normal path.
+  const attempts = plan.caps.map(cap => ({ cap, corner: false }));
+  attempts.push({ cap: 4, corner: true });
 
-    // Generate a valid division using backtracking
-    const result = solveShikaku(w, h);
-    if (result) {
-      // Build emoji grid
-      return buildEmojiPuzzle(w, h, result);
+  let proofs = 0;
+  for (const rung of attempts) {
+    for (let i = 0; i < 20; i++) {
+      if (proofs >= plan.maxProofs) return null;
+      const w = rand(cfg.minW, cfg.maxW);
+      const h = rand(cfg.minH, cfg.maxH);
+      const regions = randomTiling(w, h, rung.cap);
+      if (!regions) continue;
+
+      const anchors = placeAnchors(w, h, regions, rung.corner);
+      const verdict = countDeducibleDivisions(w, h, anchors, plan.nodeBudget);
+      proofs++;
+      // Out of search budget proves nothing; a bigger region plan will only cost more.
+      if (verdict.aborted) break;
+      if (verdict.sols === 1) return buildEmojiPuzzle(w, h, regions, anchors);
     }
   }
-  // Fallback: generate a simpler puzzle
-  return fallbackPuzzle(difficulty);
+  return null;
 }
 
-/**
- * solveShikaku: Find a valid Shikaku division via backtracking.
- * Returns { regions: [{value, cells:[idx,...]}] } or null.
- */
-function solveShikaku(w, h) {
-  // We'll use a recursive approach: find the first empty cell,
-  // try all rectangle sizes that could cover it with a unique value
-  // such that the remaining cells can also be validly filled.
-
-  const area = w * h;
-  // We need to partition all `area` cells into rectangles of any positive integer area
-  // and each has exactly one "anchor" cell (we'll pick the top-left as anchor)
-
-  const placed = new Int8Array(area); // 0 = unplaced, 1 = placed
+function randomTiling(w, h, maxArea) {
+  const total = w * h;
+  const placed = new Uint8Array(total);
   const regions = [];
 
-  function backtrack() {
-    // Find first unplaced cell
+  function fill() {
     let first = -1;
-    for (let i = 0; i < area; i++) {
-      if (!placed[i]) { first = i; break; }
-    }
-    if (first === -1) return regions.length >= 2; // All placed, need at least 2 regions
+    for (let i = 0; i < total; i++) if (!placed[i]) { first = i; break; }
+    if (first === -1) return regions.length >= 3;
 
-    const [fr, fc] = idxToRC(first, w);
-
-    // Collect all candidate rectangles covering (fr,fc), then shuffle for variety.
-    // Without shuffling the solver always picks the same tiling; with it we get diverse puzzles.
+    const fr = idxToRC(first, w)[0], fc = first % w;
     const candidates = [];
-    for (let rh = h - fr; rh >= 1; rh--) {
-      for (let rw = w - fc; rw >= 1; rw--) {
-        candidates.push([rh, rw]);
-      }
-    }
-    // Shuffle in-place so each backtracking call explores different tiling paths
-    for (let i = candidates.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
-    }
+    for (let rh = 1; fr + rh <= h; rh++)
+      for (let rw = 1; fc + rw <= w; rw++)
+        if (rh * rw <= maxArea) candidates.push([rh, rw]);
+    shuffle(candidates);
 
     for (const [rh, rw] of candidates) {
-      const regionArea = rh * rw;
-      // No upper limit — real Shikaku allows any positive integer area
-
-      // Check all cells in this rectangle are unplaced
       let canPlace = true;
-      for (let dr = 0; dr < rh && canPlace; dr++) {
-        for (let dc = 0; dc < rw && canPlace; dc++) {
+      for (let dr = 0; dr < rh && canPlace; dr++)
+        for (let dc = 0; dc < rw && canPlace; dc++)
           if (placed[rcToIdx(fr + dr, fc + dc, w)]) canPlace = false;
-        }
-      }
       if (!canPlace) continue;
 
-      // Check that within this rectangle, the anchor cell is consistent
-      // (all cells must share the same value — but since we're generating,
-      //  we just need to ensure no two anchors fall in same region,
-      //  which is guaranteed by placing top-left as anchor)
-
-      // Place region
       const cells = [];
-      for (let dr = 0; dr < rh; dr++) {
+      for (let dr = 0; dr < rh; dr++)
         for (let dc = 0; dc < rw; dc++) {
-          placed[rcToIdx(fr + dr, fc + dc, w)] = 1;
-          cells.push(rcToIdx(fr + dr, fc + dc, w));
+          const idx = rcToIdx(fr + dr, fc + dc, w);
+          placed[idx] = 1;
+          cells.push(idx);
         }
-      }
-
-      regions.push({ value: regionArea, cells });
-
-      if (backtrack()) return true;
-
-      // Unplace
+      regions.push({ value: rh * rw, cells });
+      if (fill()) return true;
       regions.pop();
-      for (const c of cells) placed[c] = 0;
+      for (const idx of cells) placed[idx] = 0;
     }
     return false;
   }
 
-  if (!backtrack()) return null;
+  return fill() ? regions : null;
+}
 
-  // Verify each region's area matches its value — it should by construction
-  // But we need to make sure each region has exactly one "value" anchor.
-  // Since regionArea = rh * rw and value = regionArea, this is always true!
-  // Also check unique solution (simplified: just verify regions cover all cells)
-  let totalCells = 0;
-  for (const r of regions) totalCells += r.cells.length;
-  if (totalCells !== area) return null;
+function placeAnchors(w, h, regions, corner) {
+  const anchors = new Int32Array(w * h).fill(-1);
+  for (const region of regions) {
+    // cells are collected row-major, so cells[0] is the region's top-left cell
+    const idx = corner ? region.cells[0] : region.cells[rand(0, region.cells.length - 1)];
+    anchors[idx] = region.value;
+  }
+  return anchors;
+}
 
-  return { regions };
+function countDeducibleDivisions(w, h, anchors, nodeBudget) {
+  const total = w * h;
+  const stride = w + 1;
+  // prefix sums of emoji cells, so a rectangle's emoji count is O(1)
+  const prefix = new Int32Array(stride * (h + 1));
+  for (let r = 0; r < h; r++)
+    for (let c = 0; c < w; c++)
+      prefix[(r + 1) * stride + c + 1] = prefix[r * stride + c + 1] + prefix[(r + 1) * stride + c]
+        - prefix[r * stride + c] + (anchors[r * w + c] >= 0 ? 1 : 0);
+
+  const labelOfValue = new Map();
+  let labelCount = 0;
+  for (let i = 0; i < total; i++)
+    if (anchors[i] >= 0 && !labelOfValue.has(anchors[i])) labelOfValue.set(anchors[i], labelCount++);
+
+  const emojiCount = (r, c, rh, rw) =>
+    prefix[(r + rh) * stride + c + rw] - prefix[r * stride + c + rw]
+    - prefix[(r + rh) * stride + c] + prefix[r * stride + c];
+
+  // Candidate rectangles per top-left cell. Two cells of the same emoji may share a
+  // region (commitDrawnRegion allows it), so multi-emoji rectangles stay in the list.
+  const rects = new Array(total);
+  for (let r = 0; r < h; r++) {
+    for (let c = 0; c < w; c++) {
+      const list = [];
+      for (let rh = 1; r + rh <= h; rh++) {
+        for (let rw = 1; c + rw <= w; rw++) {
+          if (emojiCount(r, c, rh, rw) === 0) continue;
+          let value = -1, singleValue = true;
+          for (let dr = 0; dr < rh && singleValue; dr++)
+            for (let dc = 0; dc < rw && singleValue; dc++) {
+              const idx = (r + dr) * w + c + dc;
+              if (anchors[idx] < 0) continue;
+              if (value === -1) value = anchors[idx];
+              else if (value !== anchors[idx]) singleValue = false;
+            }
+          if (singleValue) list.push({ rh, rw, area: rh * rw, label: labelOfValue.get(value) });
+        }
+      }
+      rects[r * w + c] = list;
+    }
+  }
+
+  const free = new Uint8Array(total).fill(1);
+  const areaOfLabel = new Int32Array(labelCount);
+  const ownerOfArea = new Int32Array(total + 1).fill(-1);
+  let nodes = 0, sols = 0, aborted = false;
+
+  function place(hint) {
+    if (aborted) return;
+    if (++nodes > nodeBudget) { aborted = true; return; }
+
+    // Lowest uncovered cell must be its region's top-left corner, so each division
+    // is enumerated once.
+    let p = -1;
+    for (let i = hint; i < total; i++) if (free[i]) { p = i; break; }
+    if (p === -1) { sols++; return; }
+
+    const pr = idxToRC(p, w)[0], pc = p % w;
+    for (const rect of rects[p]) {
+      const area = rect.area, label = rect.label;
+      if (areaOfLabel[label] !== 0 && areaOfLabel[label] !== area) continue;
+      if (ownerOfArea[area] !== -1 && ownerOfArea[area] !== label) continue;
+
+      let clear = true;
+      for (let dr = 0; dr < rect.rh && clear; dr++)
+        for (let dc = 0; dc < rect.rw && clear; dc++)
+          if (!free[(pr + dr) * w + pc + dc]) clear = false;
+      if (!clear) continue;
+
+      for (let dr = 0; dr < rect.rh; dr++)
+        for (let dc = 0; dc < rect.rw; dc++) free[(pr + dr) * w + pc + dc] = 0;
+      const prevArea = areaOfLabel[label], prevOwner = ownerOfArea[area];
+      areaOfLabel[label] = area;
+      ownerOfArea[area] = label;
+
+      place(p + 1);
+
+      areaOfLabel[label] = prevArea;
+      ownerOfArea[area] = prevOwner;
+      for (let dr = 0; dr < rect.rh; dr++)
+        for (let dc = 0; dc < rect.rw; dc++) free[(pr + dr) * w + pc + dc] = 1;
+
+      // Two divisions is all the evidence needed to throw the puzzle away.
+      if (sols >= 2 || aborted) return;
+    }
+  }
+
+  place(0);
+  return { sols, nodes, aborted };
 }
 
 /**
- * Build emoji grid from division. Each region gets value = its area.
- * Values present are mapped to random emojis.
+ * Build emoji grid from a proven-unique division: each region keeps one anchor cell
+ * (its emoji), and the emoji stands for the region's area.
  */
-function buildEmojiPuzzle(w, h, division) {
-  const values = [...new Set(division.regions.map(r => r.value))];
+function buildEmojiPuzzle(w, h, regions, anchors) {
+  const values = [...new Set(regions.map(r => r.value))];
   if (values.length === 0) return null;
 
   // Assign random emojis to values
@@ -818,57 +891,18 @@ function buildEmojiPuzzle(w, h, division) {
     emojiMap[values[i]] = shuffledEmojis[i];
   }
 
-  // Build flat arrays — only anchor cell gets emoji, all others blank
   const totalCells = w * h;
   const cellEmojis = new Array(totalCells).fill('');
   const solutionCells = new Array(totalCells);
 
-  for (const region of division.regions) {
-    let anchorIdx;
-    // Pick a random cell within the region for the emoji
-    anchorIdx = region.cells[Math.floor(Math.random() * region.cells.length)];
-    solutionCells[anchorIdx] = region.value;
-    cellEmojis[anchorIdx] = emojiMap[region.value];
-
-    // Fill solutionCells for all cells (used to validate player draws)
+  for (const region of regions) {
     for (const idx of region.cells) {
       solutionCells[idx] = region.value;
+      if (anchors[idx] === region.value) cellEmojis[idx] = emojiMap[region.value];
     }
   }
 
-  return { w, h, cellEmojis, solutionCells, regions: division.regions, emojiMap };
-}
-
-function fallbackPuzzle(difficulty) {
-  const cfg = DIFFS[difficulty];
-  const w = (cfg.minW + cfg.maxW) >> 1;
-  const h = w;
-
-  // Simple strip-based division (row by row)
-  const regions = [];
-  let pos = 0;
-  while (pos < w * h) {
-    const val = rand(1, Math.max(1, w * h - pos));
-    const rh = Math.min(val, h - Math.floor(pos / w));
-    if (rh <= 0) { pos++; continue; }
-    const rw = Math.ceil(val / rh);
-    if (rw > w - (pos % w)) { // Adjust to fit remaining in row
-      regions.push({ value: 1, cells: [pos], r: Math.floor(pos / w), c: pos % w });
-      pos++;
-      continue;
-    }
-    const area = rh * rw;
-    regions.push({ value: area, cells: [], r: Math.floor(pos / w), c: pos % w });
-    for (let dr = 0; dr < rh; dr++) {
-      for (let dc = 0; dc < rw; dc++) {
-        const idx = rcToIdx(Math.floor(pos / w) + dr, (pos % w) + dc, w);
-        if (idx < w * h) regions[regions.length - 1].cells.push(idx);
-      }
-    }
-    pos += rh * rw;
-  }
-
-  return buildEmojiPuzzle(w, h, { regions });
+  return { w, h, cellEmojis, solutionCells, regions, emojiMap };
 }
 
 // ============================================================

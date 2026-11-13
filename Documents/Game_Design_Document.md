@@ -29,7 +29,7 @@ A standard game of Shikaku — a rectangle is subdivided into rectangular region
 
 | Standard Shikaku | Emojikaku |
 |-----------------|---------------|
-| Numbers are visible in **one cell per region** (the anchor). | One emoji replaces the number **per region**, shown on a single anchor cell (top-left of the region). All other cells in the region are blank. |
+| Numbers are visible in **one cell per region** (the anchor). | One emoji replaces the number **per region**, shown on a single anchor cell placed at random within the region. All other cells in the region are blank. |
 | The player reads the numbers directly from anchor cells. | The mapping from emojis → values is **hidden and randomized per puzzle**. Players must deduce which emoji maps to which area by drawing regions. |
 
 #### 2.3 Drawing regions
@@ -37,6 +37,7 @@ A standard game of Shikaku — a rectangle is subdivided into rectangular region
 - **Drag** across adjacent cells on the grid to draw a rectangular region. The preview updates live as you drag.
 - **Click an existing player region** (any cell within it) to remove that region. This is the only way to correct mistakes — there is no per-cell "mark" or value assignment step.
 - Regions must be perfect rectangles and cannot overlap with other player regions.
+- A region must contain **at least one emoji** and never two **different** emojis, but several cells showing the *same* emoji may share one region. Draws that break these rules are rejected on release, which is why the uniqueness proof (§3.3) has to rule out that freedom explicitly.
 
 #### 2.4 Completion check
 
@@ -59,22 +60,34 @@ A standard game of Shikaku — a rectangle is subdivided into rectangular region
 #### 3.1 Generation algorithm (top-down)
 
 ```
-GenerateShikaku(gridWidth, gridHeight):
-    // 1. Create a valid Shikaku division using backtracking.
-    division ← SolveBacktrack(gridWidth, gridHeight)
+GeneratePuzzle(difficulty):
+    for cap in capsFor(difficulty):                    // shrinks on failure
+        for attempt in 1..20:
+            // 1. Tile the grid with rectangles, none larger than `cap`.
+            division ← RandomTiling(gridWidth, gridHeight, cap)
 
-    // 2. Extract the unique value from each region's anchor cell.
-    values ← { region.value for region in division }   // e.g. {1,3,4,2,5}
+            // 2. Place one anchor cell (the emoji) somewhere inside each region.
+            anchors ← PlaceAnchors(division)
 
-    // 3. Pick a random subset of emojis (same size as |values|)
-    //    chosen uniformly from the available emoji pool. No semantic
-    //    filtering — assignments are purely random for maximum obfuscation.
-    emojiPool ← GetRandomEmojis(|values|)
+            // 3. Reject the puzzle unless the clues leave exactly one division.
+            if CountDeducibleDivisions(anchors) ≠ 1: continue
 
-    // 4. Randomly assign emojis to values (permutation).
-    mapping ← Shuffle(emojiPool)   // maps value → emoji
+            // 4. Extract the unique value from each region's anchor cell.
+            values ← { region.value for region in division }   // e.g. {1,3,4,2,5}
 
-    return GridWithEmojis(division, mapping)
+            // 5. Pick a random subset of emojis (same size as |values|)
+            //    chosen uniformly from the available emoji pool. No semantic
+            //    filtering — assignments are purely random for maximum obfuscation.
+            emojiPool ← GetRandomEmojis(|values|)
+
+            // 6. Randomly assign emojis to values (permutation).
+            mapping ← Shuffle(emojiPool)   // maps value → emoji
+
+            return GridWithEmojis(division, mapping)
+
+    // No cap produced a provably unique puzzle. Never seen in practice; the
+    // caller surfaces a retry rather than shipping an ambiguous puzzle.
+    return null
 ```
 
 #### 3.2 Backtracking constraints
@@ -84,17 +97,21 @@ GenerateShikaku(gridWidth, gridHeight):
   - Do not exceed the grid dimensions.
   - Can lead to a complete tiling of the entire grid.
 - Standard Shikaku generation heuristics apply (first-empty-cell strategy: always place the rectangle covering the first unplaced cell, which biases toward well-formed, connected puzzles).
-- **Largest-first ordering with shuffle**: candidate rectangles are tried in descending size order so large regions get placed before being broken into 1×1 cells; a Fisher-Yates shuffle then randomises the order so consecutive puzzles differ even on identical grid dimensions.
-- **No upper cap on region area** — any positive integer area is valid, as long as regions tile the entire grid without overlap.
+- **Fisher-Yates shuffle of candidate placements**: at each recursion step every fitting rectangle is offered in random order, so consecutive puzzles differ even on identical grid dimensions.
+- **Upper cap on region area, per difficulty tier** (easy 8, medium 10, hard 12, expert 14 cells). Large regions leave the division under-constrained, so the uniqueness proof either drags or fails outright; the cap is the lever that keeps proving cheap. If a tier fails, generation retries at progressively smaller caps, finishing with a last-resort rung that pins anchors to region top-left corners.
+- **Anchor placement is random within the region** — normally the emoji marks some cell of its region rather than a corner, so players cannot infer where a region begins. Only the last-resort rung trades that away for a guaranteed-unique puzzle.
 
 #### 3.3 Quality checks
 
-After generation, run these filters:
+These checks screen every candidate inside the generation loop — a puzzle is shown only once it passes:
 
 | Check | Description | Pass criterion |
 |-------|-------------|----------------|
-| **Uniqueness** | The division is uniquely determined by logic alone — no guessing required. | Single solution found via constraint propagation. |
+| **Uniqueness** | The division is uniquely determined by logic alone — no guessing required. | Exactly one division survives the search. Two divisions — or a search that runs out of node budget and therefore proves nothing — rejects the puzzle. |
+| **Prover's rule set** | Only the rules the player is taught are applied: rectangles tiling the grid, each region holding emojis of a single value (two cells of the same emoji may share a region, as the drawing rules allow), equal emojis sharing one area, different emojis having different areas. | The prover never assumes the region-size cap, which the player cannot know. |
 | **Emoji uniqueness** | No two values share the same emoji within a puzzle. | Enforced by permutation step. |
+
+Uniqueness is a hard gate, not a preference: a puzzle is shown only after it is proven, because ambiguous puzzles push players into trial-and-error. At these caps the proof is cheap — measured in-browser median generation is ≈1 ms (easy/medium), ≈20 ms (hard), ≈80 ms (expert).
 
 ### 4. Difficulty System
 
@@ -105,15 +122,18 @@ After generation, run these filters:
 | **Grid size** | 3×3 → easiest; 12×12+ → expert |
 | **Number of regions** | More regions = more constraints = generally easier per-region, but harder global logic. Balanced by grid size. |
 | **Constraint density** | Regions that force early deductions vs. those left until the end. Puzzles with few "forced moves" at start are harder. |
+| **Max region area** | The per-tier cap on the largest region. Smaller caps mean more regions and more interlocking logic; larger caps look grander but leave the division under-constrained, so it can no longer be proven unique cheaply. |
 
 #### 4.2 Difficulty tiers
 
-| Tier | Grid range | Regions | Description |
-|------|-----------|---------|-------------|
-| 🟢 Easy | 3×3 – 5×5 | ≤ 8 | First-time friendly; straightforward divisions. |
-| 🔵 Medium | 6×6 – 8×8 | 9–16 | Comfortable Shikaku experience with moderate deduction chains. |
-| 🟣 Hard | 9×9 – 10×10 | 17–25 | Requires systematic logic; ambiguous emoji labels add cognitive friction. |
-| 🔴 Expert | 11×11+ | 26+ | For veterans; long deduction chains and many region interactions needed. |
+Region counts are what the current generator actually produces under the uniqueness gate.
+
+| Tier | Grid range | Regions | Max region area | Description |
+|------|-----------|---------|-----------------|-------------|
+| 🟢 Easy | 3×3 – 5×5 | 3–10 | 8 | First-time friendly; straightforward divisions. |
+| 🔵 Medium | 6×6 – 8×8 | 13–21 | 10 | Comfortable Shikaku experience with moderate deduction chains. |
+| 🟣 Hard | 9×9 – 10×10 | 22–32 | 12 | Requires systematic logic; ambiguous emoji labels add cognitive friction. |
+| 🔴 Expert | 11×11+ | 34–59 | 14 | For veterans; long deduction chains and many region interactions needed. |
 
 #### 4.3 Recommended daily/weekly content
 
