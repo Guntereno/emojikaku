@@ -61,34 +61,48 @@ A standard game of Shikaku — a rectangle is subdivided into rectangular region
 
 ```
 GeneratePuzzle(difficulty):
-    for cap in capsFor(difficulty):                    // shrinks on failure
-        for attempt in 1..20:
+    plan ← planFor(difficulty)          // cap ladder, tries per cap, difficulty target
+    best ← none
+
+    for cap in plan.caps:
+        for attempt in 1..plan.tries:
             // 1. Tile the grid with rectangles, none larger than `cap`.
             division ← RandomTiling(gridWidth, gridHeight, cap)
 
-            // 2. Place one anchor cell (the emoji) somewhere inside each region.
-            anchors ← PlaceAnchors(division)
+            // 2. Manufacture a starting truth: a 1×1 region whose every neighbour
+            //    is pinned as its own region's anchor. No rectangle larger than a
+            //    single cell can then cover it, so the player can prove that
+            //    emoji is a 1 before drawing anything.
+            pins ← FindOpening(division)            // none → this division offers no opening
+            if pins = none: continue
+            anchors ← PlaceAnchors(division, pins)  // pinned cells first, the rest random
 
-            // 3. Reject the puzzle unless the clues leave exactly one division.
-            if CountDeducibleDivisions(anchors) ≠ 1: continue
+            // 3. Confirm the clue set really does force that emoji, rather than
+            //    trusting the construction.
+            if not HasForcedCell(anchors): continue
 
-            // 4. Extract the unique value from each region's anchor cell.
-            values ← { region.value for region in division }   // e.g. {1,3,4,2,5}
+            // 4. Reject the puzzle unless the clues leave exactly one division.
+            proof ← CountDeducibleDivisions(anchors)
+            if proof.aborted or proof.sols ≠ 1: continue
 
-            // 5. Pick a random subset of emojis (same size as |values|)
-            //    chosen uniformly from the available emoji pool. No semantic
-            //    filtering — assignments are purely random for maximum obfuscation.
-            emojiPool ← GetRandomEmojis(|values|)
+            // 5. Keep candidates at this tier's difficulty. `proof.nodes` counts how
+            //    much case-analysis was needed to see the division is the only one;
+            //    the tier accepts the first candidate within ±35% (log gap ≤ 0.30) of
+            //    its target and otherwise remembers the closest one.
+            gap ← |ln(proof.nodes / plan.targetNodes)|
+            if gap ≤ 0.30: return BuildPuzzle(division, anchors)
+            best ← the closer of (best, this candidate)
 
-            // 6. Randomly assign emojis to values (permutation).
-            mapping ← Shuffle(emojiPool)   // maps value → emoji
+            if time spent > 800 ms: stop sampling          // latency guard
 
-            return GridWithEmojis(division, mapping)
+    if best ≠ none: return BuildPuzzle(best)
 
-    // No cap produced a provably unique puzzle. Never seen in practice; the
-    // caller surfaces a retry rather than shipping an ambiguous puzzle.
-    return null
+    // Escape hatch, almost never reached: pin every anchor to its region's
+    // top-left corner — the plainest division there is — and ship what proves.
+    return FallbackPuzzle(difficulty)
 ```
+
+`BuildPuzzle` then labels the division: the distinct region values are collected, a same-sized subset of the emoji pool is drawn uniformly at random, and a shuffled permutation assigns emoji to value. There is no semantic filtering — assignments are purely random for maximum obfuscation. Equal values share an emoji; different values never do.
 
 #### 3.2 Backtracking constraints
 
@@ -98,8 +112,8 @@ GeneratePuzzle(difficulty):
   - Can lead to a complete tiling of the entire grid.
 - Standard Shikaku generation heuristics apply (first-empty-cell strategy: always place the rectangle covering the first unplaced cell, which biases toward well-formed, connected puzzles).
 - **Fisher-Yates shuffle of candidate placements**: at each recursion step every fitting rectangle is offered in random order, so consecutive puzzles differ even on identical grid dimensions.
-- **Upper cap on region area, per difficulty tier** (easy 8, medium 10, hard 12, expert 14 cells). Large regions leave the division under-constrained, so the uniqueness proof either drags or fails outright; the cap is the lever that keeps proving cheap. If a tier fails, generation retries at progressively smaller caps, finishing with a last-resort rung that pins anchors to region top-left corners.
-- **Anchor placement is random within the region** — normally the emoji marks some cell of its region rather than a corner, so players cannot infer where a region begins. Only the last-resort rung trades that away for a guaranteed-unique puzzle.
+- **Region-area caps are a sampling knob, not the difficulty dial.** Each tier walks a short ladder of caps — easy 8 → 6 → 4, medium 8 → 10 → 6, hard and expert 8 → 6 — cheapest and most promising first, and stops as soon as a candidate is in its band. The old large rungs (12 and 14 cells) were dropped: on a 9×9 grid and up, ~90% of their divisions could not be proven unique inside the node budget, so they cost time and produced nothing.
+- **Opening pins are anchored deliberately.** The boxed 1×1 region and every neighbour region keep their pinned cell as the emoji position; all remaining regions place their anchor on a random cell of the region, so players cannot infer where a region begins. Only the fallback pins every region to its top-left corner.
 
 #### 3.3 Quality checks
 
@@ -108,10 +122,12 @@ These checks screen every candidate inside the generation loop — a puzzle is s
 | Check | Description | Pass criterion |
 |-------|-------------|----------------|
 | **Uniqueness** | The division is uniquely determined by logic alone — no guessing required. | Exactly one division survives the search. Two divisions — or a search that runs out of node budget and therefore proves nothing — rejects the puzzle. |
-| **Prover's rule set** | Only the rules the player is taught are applied: rectangles tiling the grid, each region holding emojis of a single value (two cells of the same emoji may share a region, as the drawing rules allow), equal emojis sharing one area, different emojis having different areas. | The prover never assumes the region-size cap, which the player cannot know. |
-| **Emoji uniqueness** | No two values share the same emoji within a puzzle. | Enforced by permutation step. |
+| **Prover's rule set** | Only the rules the player is taught are applied: rectangles tiling the grid, each region holding emojis of a single value (two cells of the same emoji may share a region, as the drawing rules allow), equal emojis sharing one area, different emojis having different areas. | The prover never assumes the region-size cap or the opening construction, neither of which the player can know. |
+| **Opening move** | Some emoji is provable on sight, so the puzzle is never a wall. | A legal-rectangle scan leaves at least one anchored cell covered only by rectangles of one area. Built by the box-in, then verified rather than trusted. |
+| **Difficulty band** | The puzzle sits near its tier's target instead of anywhere in the tier's natural range. | First candidate within ±35% of the target prover cost is accepted outright. |
+| **Emoji uniqueness** | No two values share the same emoji within a puzzle. | Enforced by the permutation step. |
 
-Uniqueness is a hard gate, not a preference: a puzzle is shown only after it is proven, because ambiguous puzzles push players into trial-and-error. At these caps the proof is cheap — measured in-browser median generation is ≈1 ms (easy/medium), ≈20 ms (hard), ≈80 ms (expert).
+Uniqueness is a hard gate, not a preference: a puzzle is shown only after it is proven, because ambiguous puzzles push players into trial-and-error. Proving is the expensive part, so generation is bounded by a 200,000-node search budget and an 800 ms wall-clock guard. Measured in-browser, per puzzle: ≈0.5 ms (easy), ≈3 ms (medium), ≈22 ms (hard), ≈106 ms mean / 262 ms at p95 (expert).
 
 ### 4. Difficulty System
 
@@ -119,21 +135,27 @@ Uniqueness is a hard gate, not a preference: a puzzle is shown only after it is 
 
 | Factor | Impact |
 |--------|--------|
-| **Grid size** | 3×3 → easiest; 12×12+ → expert |
-| **Number of regions** | More regions = more constraints = generally easier per-region, but harder global logic. Balanced by grid size. |
-| **Constraint density** | Regions that force early deductions vs. those left until the end. Puzzles with few "forced moves" at start are harder. |
-| **Max region area** | The per-tier cap on the largest region. Smaller caps mean more regions and more interlocking logic; larger caps look grander but leave the division under-constrained, so it can no longer be proven unique cheaply. |
+| **Proof cost — the dial** | The prover's node count: how much case-analysis it takes to see that the division is the only one. Each tier samples until a candidate lands near its target, so this, not the region sizes, is what sets a tier. |
+| **Grid size** | 3×3 → easiest; 14×14 → expert. Grid range is also the visible difference between the top two tiers, whose proof targets differ by only ~4×. |
+| **Number of regions** | More regions = more constraints = easier per-region, but harder global logic. A consequence of the cap ladder and grid size, not aimed at directly. |
+| **Constraint density** | Regions that force early deductions vs. those left until the end. Measured difficulty covers this implicitly: a puzzle whose deductions arrive late costs the prover more. |
+| **Max region area** | Now only a sampling knob. Large caps leave the division under-constrained, so the proof drags or runs out of budget; the tiers therefore sample small caps, where a proof is affordable and the difficulty can be chosen. |
+| **Forced opening** | No longer a difficulty lever — every puzzle is guaranteed at least one emoji that is provable on sight, so "no way in" is not a thing the tiers vary. |
+
+Size is no guide to difficulty: two 90-cell puzzles measured 2,800 and 109,000 proof nodes. That is why the tiers sample rather than tune dimensions.
 
 #### 4.2 Difficulty tiers
 
-Region counts are what the current generator actually produces under the uniqueness gate.
+Grid ranges, region counts and cost ranges are what the current generator actually produces, measured over 60 puzzles per tier. Cost ranges are the 5th–95th percentile of prover nodes for the puzzles that were actually shown; tier targets are 45, 1,000, 22,000 and 80,000 nodes.
 
-| Tier | Grid range | Regions | Max region area | Description |
-|------|-----------|---------|-----------------|-------------|
-| 🟢 Easy | 3×3 – 5×5 | 3–10 | 8 | First-time friendly; straightforward divisions. |
-| 🔵 Medium | 6×6 – 8×8 | 13–21 | 10 | Comfortable Shikaku experience with moderate deduction chains. |
-| 🟣 Hard | 9×9 – 10×10 | 22–32 | 12 | Requires systematic logic; ambiguous emoji labels add cognitive friction. |
-| 🔴 Expert | 11×11+ | 34–59 | 14 | For veterans; long deduction chains and many region interactions needed. |
+| Tier | Grid range | Regions | Shown cost p5–p95 | Description |
+|------|-----------|---------|-------------------|-------------|
+| 🟢 Easy | 3×3 – 5×5 | 5–15 | 33–63 | First-time friendly; a visible truth and short divisions. |
+| 🔵 Medium | 6×6 – 8×8 | 9–24 | 597–2,024 | Comfortable Shikaku with moderate deduction chains. |
+| 🟣 Hard | 9×9 – 10×10 | 19–33 | 14,700–35,000 | Requires systematic logic; ambiguous emoji labels add cognitive friction. |
+| 🔴 Expert | 11×11 – 14×14 | 26–60 | 55,000–139,000 | For veterans; long deduction chains and many region interactions. |
+
+Before banding, Hard puzzles ranged over 2,900–112,600 nodes — a forty-fold spread that made the tier name mean something different on consecutive puzzles. Banding holds each tier inside roughly a 2× window, and on these samples the tiers do not touch: Hard's p95 sits below Expert's p5.
 
 #### 4.3 Recommended daily/weekly content
 

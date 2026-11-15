@@ -649,9 +649,9 @@ let S = {
 
 const DIFFS = {
   easy:   { minW: 3, maxW: 5, minH: 3, maxH: 5 },
-  medium: { minW: 6, maxW: 8, minH: 6, maxH: 8 },
-  hard:   { minW: 9, maxW: 10, minH: 9, maxH: 10 },
-  expert: { minW: 11, maxW: 14, minH: 11, maxH: 14 }
+  medium: { minW: 5, maxW: 6, minH: 5, maxH: 6 },
+  hard:   { minW: 7, maxW: 7, minH: 7, maxH: 7 },
+  expert: { minW: 8, maxW: 8, minH: 8, maxH: 8 }
 };
 
 // ============================================================
@@ -689,45 +689,116 @@ function showScreen(name) {
 }
 
 // ============================================================
-// PUZZLE GENERATION — accepted only when the clues force one division
+// PUZZLE GENERATION — provably unique, at a chosen difficulty
 // ============================================================
-// The prover below counts every division a player could deduce from the rules
-// they are taught (rectangles covering the grid, one emoji value per region,
-// equal emojis sharing an area, different emojis having different areas).
-// Anything but exactly one is rejected as trial-and-error fodder and retried.
+// Every puzzle shown has a truth to start from: a 1x1 region boxed in by its
+// neighbours, so at least one emoji provably stands for 1 before anything is drawn.
+// Each tier samples candidate puzzles until one lands inside its band. `nodes` is
+// that band's centre: the prover's node count, i.e. how much case-analysis the
+// puzzle demands. Size is no guide to it — two 8×8 puzzles on the same cap
+// measured 2,700 and 67,000 — but it does set a ceiling: an 8×8 grid has been seen to ask for 67,000
+// nodes and a 6×6 never above 900, so each tier's target sits inside what its
+// grids can supply. `caps` are the largest-region limits a tier will try, cheap and
+// promising first; the ones that mostly produce ambiguous divisions stay last.
+// On these boards a candidate costs about a millisecond, so the tiers can afford
+// to sample generously and rarely fall back.
 const GEN_PLAN = {
-  easy:   { caps: [8, 6, 4],           nodeBudget: 20000,  maxProofs: 60 },
-  medium: { caps: [10, 8, 6],          nodeBudget: 60000,  maxProofs: 90 },
-  hard:   { caps: [12, 10, 8, 6],      nodeBudget: 120000, maxProofs: 130 },
-  expert: { caps: [14, 12, 10, 8, 6],  nodeBudget: 200000, maxProofs: 180 }
+  easy:   { caps: [8, 6, 4],   tries: 16, nodes: 45 },
+  medium: { caps: [6, 4, 8],   tries: 24, nodes: 250 },
+  hard:   { caps: [6, 8, 10],  tries: 24, nodes: 1000 },
+  expert: { caps: [10, 8, 12], tries: 40, nodes: 6000 }
 };
+// Log gap, because proof cost spans orders of magnitude: 0.30 ≈ within 35%.
+const ACCEPT_LOG = 0.30;
+const PROOF_BUDGET = 200000;
+const GEN_MS_LIMIT = 800;
 
 function generatePuzzle(difficulty) {
   const cfg = DIFFS[difficulty];
   const plan = GEN_PLAN[difficulty];
+  const deadline = performance.now() + GEN_MS_LIMIT;
+  let best = null, bestGap = Infinity;
 
-  // Shrinking the largest region constrains the division until the proof succeeds.
-  // The last attempt pins emojis to their region's top-left corner, which forces a
-  // unique division almost always; it is the escape hatch, not the normal path.
-  const attempts = plan.caps.map(cap => ({ cap, corner: false }));
-  attempts.push({ cap: 4, corner: true });
-
-  let proofs = 0;
-  for (const rung of attempts) {
-    for (let i = 0; i < 20; i++) {
-      if (proofs >= plan.maxProofs) return null;
+  for (const cap of plan.caps) {
+    for (let i = 0; i < plan.tries; i++) {
       const w = rand(cfg.minW, cfg.maxW);
       const h = rand(cfg.minH, cfg.maxH);
-      const regions = randomTiling(w, h, rung.cap);
+      const regions = randomTiling(w, h, cap);
       if (!regions) continue;
 
-      const anchors = placeAnchors(w, h, regions, rung.corner);
-      const verdict = countDeducibleDivisions(w, h, anchors, plan.nodeBudget);
-      proofs++;
-      // Out of search budget proves nothing; a bigger region plan will only cost more.
-      if (verdict.aborted) break;
-      if (verdict.sols === 1) return buildEmojiPuzzle(w, h, regions, anchors);
+      const opening = findOpening(w, h, regions);
+      if (!opening) continue;
+      const anchors = placeAnchors(w, h, regions, false, opening);
+
+      const ix = buildRectIndex(w, h, anchors);
+      // The box-in is only worth having if the clue set really does force it.
+      if (!hasForcedCell(w, anchors, ix)) continue;
+
+      const proof = countDeducibleDivisions(w, ix, PROOF_BUDGET);
+      // An unfinished search proves nothing, even if it found one division so far.
+      if (proof.aborted || proof.sols !== 1) continue;
+
+      const gap = Math.abs(Math.log(proof.nodes / plan.nodes));
+      if (gap <= ACCEPT_LOG) return buildEmojiPuzzle(w, h, regions, anchors);
+      if (gap < bestGap) { bestGap = gap; best = { w, h, regions, anchors }; }
+
+      if (performance.now() > deadline) break;
     }
+    if (performance.now() > deadline) break;
+  }
+
+  if (best) return buildEmojiPuzzle(best.w, best.h, best.regions, best.anchors);
+  return generateFallbackPuzzle(difficulty);
+}
+
+// Escape hatch, almost never reached: pins every emoji to its region's top-left
+// corner, the plainest shape there is, and ships whatever the prover accepts.
+// Better a dull puzzle than no puzzle.
+function generateFallbackPuzzle(difficulty) {
+  const cfg = DIFFS[difficulty];
+  for (const cap of [6, 4]) {
+    for (let i = 0; i < 20; i++) {
+      const w = rand(cfg.minW, cfg.maxW);
+      const h = rand(cfg.minH, cfg.maxH);
+      const regions = randomTiling(w, h, cap);
+      if (!regions) continue;
+      const anchors = placeAnchors(w, h, regions, true, findOpening(w, h, regions));
+      const proof = countDeducibleDivisions(w, buildRectIndex(w, h, anchors), PROOF_BUDGET);
+      if (!proof.aborted && proof.sols === 1) return buildEmojiPuzzle(w, h, regions, anchors);
+    }
+  }
+  return null;
+}
+
+/**
+ * Pins that box a lone cell in: its region is a single cell, and every neighbour
+ * is forced to be its own region's emoji. No larger rectangle can then cover that
+ * cell without holding two different emojis, so the player can prove its emoji is
+ * a 1 before drawing anything. Null when the division offers no such cell.
+ */
+function findOpening(w, h, regions) {
+  const owner = new Int32Array(w * h).fill(-1);
+  regions.forEach((region, i) => { for (const c of region.cells) owner[c] = i; });
+
+  for (let ri = 0; ri < regions.length; ri++) {
+    const region = regions[ri];
+    if (region.value !== 1) continue;
+    const cell = region.cells[0];
+    const r = idxToRC(cell, w)[0], c = cell % w;
+    const pins = [{ region: ri, cell }];
+    const pinned = new Set([ri]);
+    let boxed = true;
+    for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+      const rr = r + dr, cc = c + dc;
+      if (rr < 0 || cc < 0 || rr >= h || cc >= w) continue;
+      const ni = owner[rr * w + cc];
+      // A neighbouring 1x1 shares this emoji and reopens the shape, and two
+      // neighbours inside one region would need two emojis placed there.
+      if (ni === ri || regions[ni].value === 1 || pinned.has(ni)) { boxed = false; break; }
+      pinned.add(ni);
+      pins.push({ region: ni, cell: rr * w + cc });
+    }
+    if (boxed) return pins;
   }
   return null;
 }
@@ -774,9 +845,16 @@ function randomTiling(w, h, maxArea) {
   return fill() ? regions : null;
 }
 
-function placeAnchors(w, h, regions, corner) {
+function placeAnchors(w, h, regions, corner, pins) {
   const anchors = new Int32Array(w * h).fill(-1);
-  for (const region of regions) {
+  const pinned = new Uint8Array(regions.length);
+  for (const pin of pins || []) {
+    anchors[pin.cell] = regions[pin.region].value;
+    pinned[pin.region] = 1;
+  }
+  for (let i = 0; i < regions.length; i++) {
+    if (pinned[i]) continue;
+    const region = regions[i];
     // cells are collected row-major, so cells[0] is the region's top-left cell
     const idx = corner ? region.cells[0] : region.cells[rand(0, region.cells.length - 1)];
     anchors[idx] = region.value;
@@ -784,7 +862,12 @@ function placeAnchors(w, h, regions, corner) {
   return anchors;
 }
 
-function countDeducibleDivisions(w, h, anchors, nodeBudget) {
+/**
+ * Every rectangle a player could legally draw: at least one emoji, and never two
+ * different ones. Grouped by top-left cell. The generator and the prover both
+ * read this, so they can never disagree about which moves are legal.
+ */
+function buildRectIndex(w, h, anchors) {
   const total = w * h;
   const stride = w + 1;
   // prefix sums of emoji cells, so a rectangle's emoji count is O(1)
@@ -794,18 +877,22 @@ function countDeducibleDivisions(w, h, anchors, nodeBudget) {
       prefix[(r + 1) * stride + c + 1] = prefix[r * stride + c + 1] + prefix[(r + 1) * stride + c]
         - prefix[r * stride + c] + (anchors[r * w + c] >= 0 ? 1 : 0);
 
+  const emojiCount = (r, c, rh, rw) =>
+    prefix[(r + rh) * stride + c + rw] - prefix[r * stride + c + rw]
+    - prefix[(r + rh) * stride + c] + prefix[r * stride + c];
+
   const labelOfValue = new Map();
   let labelCount = 0;
   for (let i = 0; i < total; i++)
     if (anchors[i] >= 0 && !labelOfValue.has(anchors[i])) labelOfValue.set(anchors[i], labelCount++);
 
-  const emojiCount = (r, c, rh, rw) =>
-    prefix[(r + rh) * stride + c + rw] - prefix[r * stride + c + rw]
-    - prefix[(r + rh) * stride + c] + prefix[r * stride + c];
-
-  // Candidate rectangles per top-left cell. Two cells of the same emoji may share a
-  // region (commitDrawnRegion allows it), so multi-emoji rectangles stay in the list.
+  // Two cells of the same emoji may share a region (commitDrawnRegion allows it),
+  // so multi-emoji rectangles stay in the list.
   const rects = new Array(total);
+  // For every cell, the areas of the rectangles that could cover it; once two
+  // differ the cell is ambiguous. A cell left with one area is read off directly.
+  const cellArea = new Int32Array(total);
+  const cellMixed = new Uint8Array(total);
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
       const list = [];
@@ -820,13 +907,40 @@ function countDeducibleDivisions(w, h, anchors, nodeBudget) {
               if (value === -1) value = anchors[idx];
               else if (value !== anchors[idx]) singleValue = false;
             }
-          if (singleValue) list.push({ rh, rw, area: rh * rw, label: labelOfValue.get(value) });
+          if (!singleValue) continue;
+          const area = rh * rw;
+          for (let dr = 0; dr < rh; dr++)
+            for (let dc = 0; dc < rw; dc++) {
+              const q = (r + dr) * w + c + dc;
+              if (cellArea[q] === 0) cellArea[q] = area;
+              else if (cellArea[q] !== area) cellMixed[q] = 1;
+            }
+          list.push({ rh, rw, area, label: labelOfValue.get(value) });
         }
       }
       rects[r * w + c] = list;
     }
   }
+  return { total, labelCount, rects, cellArea, cellMixed };
+}
 
+/**
+ * True when some emoji sits where every legal rectangle around it has the same
+ * area, so the player can name that emoji before drawing anything. The box-in
+ * generation arranged is checked here rather than trusted.
+ */
+function hasForcedCell(w, anchors, ix) {
+  const { total, cellArea, cellMixed } = ix;
+  for (let p = 0; p < total; p++)
+    if (anchors[p] >= 0 && cellArea[p] !== 0 && !cellMixed[p]) return true;
+  return false;
+}
+
+// Counts the divisions the taught rules allow. Two is enough evidence to throw a
+// puzzle away; running out of budget proves nothing. The node count doubles as the
+// difficulty measurement: how much case-analysis the puzzle demands.
+function countDeducibleDivisions(w, ix, nodeBudget) {
+  const { total, labelCount, rects } = ix;
   const free = new Uint8Array(total).fill(1);
   const areaOfLabel = new Int32Array(labelCount);
   const ownerOfArea = new Int32Array(total + 1).fill(-1);
