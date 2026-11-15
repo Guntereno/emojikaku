@@ -248,7 +248,7 @@ header h1 {
 
 /* ---- Guide Panel ---- */
 #guide-panel {
-  flex-shrink: 0; min-width: 110px;
+  flex-shrink: 0; width: 160px;   /* fixed: matches the width computeGridSize() reserves */
   background: var(--surface); border-radius: 20px; padding: 16px;
   box-shadow: var(--shadow-1); transition: opacity 0.2s, transform 0.2s;
 }
@@ -259,7 +259,7 @@ header h1 {
 }
 
 #guide-table {
-  width: 100%; border-collapse: collapse; font-size: 0.8rem;
+  width: 100%; border-collapse: collapse; font-size: 0.8rem; table-layout: fixed;
 }
 
 #guide-table td {
@@ -271,7 +271,7 @@ header h1 {
 }
 
 #guide-table td.guide-guess {
-  font-weight: 600; min-width: 40px;
+  font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums;
 }
 
 #guide-table tr.guide-conflict td.guide-guess {
@@ -491,7 +491,6 @@ header h1 {
     max-width: 100%;
   }
   #guide-panel {
-    min-width: unset;
     width: 100%;
     max-width: 400px;
   }
@@ -1780,11 +1779,17 @@ function renderGuide() {
   let html = '';
   for (const { emoji, value } of entries) {
     const sizes = guesses[emoji] || [];
-    const guessText = sizes.length > 0 ? sizes.join(' + ') : '—';
-
-    // Check for conflict: multiple different sizes for same emoji
     const uniqueSizes = [...new Set(sizes)];
+    // Conflict: the same emoji has regions of different sizes
     const hasConflict = uniqueSizes.length > 1;
+
+    // Fixed-width summary: size + guess count, or count alone when the guesses disagree
+    let guessText = '—', tip = '';
+    if (sizes.length === 1) guessText = `${sizes[0]}`;
+    else if (sizes.length > 1) {
+      guessText = hasConflict ? `×${sizes.length}` : `${uniqueSizes[0]} ×${sizes.length}`;
+      tip = [...sizes].sort((a, b) => a - b).join(', ');
+    }
 
     // Check for duplicate guess: another emoji also guessed this exact size
     let isDuplicate = false;
@@ -1806,7 +1811,7 @@ function renderGuide() {
 
     html += `<tr class="${rowClass.join(' ')}">`;
     html += `<td class="guide-emoji">${emoji}</td>`;
-    html += `<td class="guide-guess">${guessText}${hasConflict ? ' ⚠' : ''}</td>`;
+    html += `<td class="guide-guess"${tip ? ` title="Guesses: ${tip}"` : ''}>${guessText}${hasConflict ? ' ⚠' : ''}</td>`;
     html += '</tr>';
   }
 
