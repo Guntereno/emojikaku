@@ -381,7 +381,7 @@ It is text-and-static-diagrams only: no interactive drawing exercise, no animate
 │  index.html  — single file, no build, no dependencies, no server│
 │                                                                │
 │  <style>      CSS custom properties, light + dark tokens       │
-│  <body>       six .screen divs + header + unused legacy panel  │
+│  <body>       six .screen divs + header                        │
 │  <script>     one classic script; every helper is global        │
 │                                                                │
 │    state        one mutable object `S` (screens, puzzle, draws,│
@@ -447,6 +447,6 @@ Observed in the current build, in rough order of how much they cost the player:
 | **Reveal's confirmation toast never appears** | `showToast` appends to `getElementById('game-header')`, but the element is `class="game-header"` with no id, so the node is discarded. Reveal gives no feedback beyond the drawn regions. | `showToast()` |
 | **Clear is not undoable** | Clear takes no history snapshot, so the next Undo returns to the state before the last create/remove rather than the board as it was before clearing. | Clear button handler |
 | **Puzzles are lost silently** | ← Menu stops the timer and discards the board; Play always generates a new puzzle. There is no confirmation and no resume. | `btn-back`, `startPuzzle()` |
-| **Dead legacy UI** | A hidden "mark emoji as value" panel (markup + CSS + an `Esc` handler that only closes it) survives from the deleted scratchpad. It is invisible, unreachable, and still wired. | `#emoji-panel` |
 | **Filler copy on the success screen** | The completion card always reads "Well done." — a leftover of the deleted facts feature. | `showCompletion()` |
 | **Generation failure path recurses** | `alert()` then a recursive `startPuzzle()`; unbounded in principle, though the fallback has never failed in measurement. | `startPuzzle()` |
+

@@ -387,38 +387,6 @@ header h1 {
 }
 .ctrl-btn:disabled { opacity: 0.3; cursor: default; box-shadow: none; transform: none; }
 
-/* ---- Emoji Panel ---- */
-.emoji-panel {
-  display: none; position: fixed; bottom: 20px; left: 50%;
-  transform: translateX(-50%); 
-  background: var(--surface);
-  border-radius: 24px; padding: 20px 28px;
-  z-index: 100; min-width: 260px; text-align: center;
-  box-shadow: var(--shadow-3); transition: opacity 0.2s, transform 0.2s;
-}
-.emoji-panel.visible { display: block; }
-.panel-emoji-big { font-size: 2.8rem; margin-bottom: 8px; }
-.panel-values { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
-
-.val-btn {
-  width: 40px; height: 40px; border-radius: 50%;
-  border: none; background: var(--surface); font-size: 1rem; font-weight: 600;
-  cursor: pointer; color: var(--on-surface-medium);
-  transition: all 0.2s ease, box-shadow 0.2s ease;
-  box-shadow: var(--shadow-1);
-}
-.val-btn:hover { 
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--on-surface);
-  box-shadow: var(--shadow-2);
-}
-.val-btn.confirmed-mark { 
-  background: var(--accent); 
-  color: #FFFFFF; 
-  border-color: var(--accent);
-  box-shadow: var(--shadow-1);
-}
-
 /* ---- Stats ---- */
 .stats-tabs {
   display: flex; gap: 6px; flex-wrap: wrap; justify-content: center;
@@ -610,15 +578,6 @@ header h1 {
       <button class="secondary-btn" id="btn-complete-menu" style="margin-top:8px;">Menu</button>
     </div>
   </div>
-</div>
-
-<!-- Emoji Panel (hidden — no longer used) -->
-<div class="emoji-panel" id="emoji-panel" style="display:none;">
-  <div class="panel-emoji-big" id="panel-emoji"></div>
-  <p style="margin-bottom:10px; opacity:0.6;">Mark as:</p>
-  <div class="panel-values" id="panel-values"></div>
-  <button class="nav-btn secondary-tut" id="panel-clear" style="margin-top:12px; font-size:0.85rem; padding:8px 20px;">Unmark</button>
-  <button class="nav-btn secondary-tut" id="panel-close" style="margin-top:8px; font-size:0.85rem; padding:8px 20px;">Close</button>
 </div>
 
 <script>
@@ -2130,11 +2089,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('toggle-dark').classList.toggle('active', S.darkMode);
   });
 
-  // Keyboard: Escape to close panel, Ctrl+Z for undo
+  // Keyboard: Ctrl+Z for undo
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      document.getElementById('emoji-panel').classList.remove('visible');
-    }
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
       e.preventDefault();
       undo();
@@ -2157,3 +2113,4 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 </body>
 </html>
+
