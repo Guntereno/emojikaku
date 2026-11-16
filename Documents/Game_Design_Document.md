@@ -254,7 +254,7 @@ The filled rectangle is a player-drawn region of area 4 — the centred `4` is i
 
 ### 5.2 Header and menu
 
-- **Header:** the wordmark `Emojikaku`, then 🌙 (instant dark/light toggle), 🏆 (stats), ⚙️ (settings).
+- **Header:** the wordmark `Emojikaku`, then the theme button (shows 🌙 while dark, ☀️ while light; one click toggles), 🏆 (stats), ⚙️ (settings).
 - **Menu:** 🧩❓ mark, one-line pitch ("Divide the grid into rectangles. Each emoji hides a number — deduce which is which."), four difficulty chips (🟢 Easy, 🔵 Medium, 🟣 Hard, 🔴 Expert, Easy preselected), ▶ Play, ✨ Tutorial. Difficulty choice is per-session and is not remembered between loads.
 
 ### 5.3 Controls & interactions
@@ -449,5 +449,4 @@ Observed in the current build, in rough order of how much they cost the player:
 | **Puzzles are lost silently** | ← Menu stops the timer and discards the board; Play always generates a new puzzle. There is no confirmation and no resume. | `btn-back`, `startPuzzle()` |
 | **Dead legacy UI** | A hidden "mark emoji as value" panel (markup + CSS + an `Esc` handler that only closes it) survives from the deleted scratchpad. It is invisible, unreachable, and still wired. | `#emoji-panel` |
 | **Filler copy on the success screen** | The completion card always reads "Well done." — a leftover of the deleted facts feature. | `showCompletion()` |
-| **Theme button label never changes** | The header button is permanently 🌙 and does not become ☀️ in light mode. | `btn-theme` |
 | **Generation failure path recurses** | `alert()` then a recursive `startPuzzle()`; unbounded in principle, though the fallback has never failed in measurement. | `startPuzzle()` |

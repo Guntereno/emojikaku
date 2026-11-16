@@ -2051,8 +2051,14 @@ function showSettings() {
 
 function toggleDark() {
   S.darkMode = !S.darkMode;
-  document.body.classList.toggle('dark', S.darkMode);
+  applyTheme();
   savePersisted();
+}
+function applyTheme() {
+  document.body.classList.toggle('dark', S.darkMode);
+  const btn = document.getElementById('btn-theme');
+  btn.textContent = S.darkMode ? '🌙' : '☀️';
+  btn.title = S.darkMode ? 'Switch to light mode' : 'Switch to dark mode';
 }
 
 // ============================================================
@@ -2060,9 +2066,7 @@ function toggleDark() {
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
   loadPersisted();
-
-  // Apply dark mode
-  if (S.darkMode) document.body.classList.add('dark');
+  applyTheme();
 
   // Difficulty buttons
   document.querySelectorAll('.diff-btn').forEach(btn => {
@@ -2121,11 +2125,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Settings toggles
   document.getElementById('toggle-dark').addEventListener('click', () => {
-    S.darkMode = !S.darkMode;
-    document.body.classList.toggle('dark', S.darkMode);
-    const t = document.getElementById('toggle-dark');
-    t.classList.toggle('active', S.darkMode);
-    savePersisted();
+    toggleDark();
+    document.getElementById('toggle-dark').classList.toggle('active', S.darkMode);
   });
 
   // Keyboard: Escape to close panel, Ctrl+Z for undo
