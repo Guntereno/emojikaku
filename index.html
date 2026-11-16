@@ -594,10 +594,6 @@ header h1 {
           <span>Dark Mode</span>
           <div class="toggle-track" id="toggle-dark"></div>
         </div>
-        <div class="setting-row">
-          <span>Show Numbers on Reveal</span>
-          <div class="toggle-track active" id="toggle-numbers"></div>
-        </div>
       </div>
       <button class="secondary-btn" id="btn-settings-back">← Back</button>
     </div>
@@ -649,7 +645,6 @@ let S = {
   screen: 'menu',
   difficulty: 'easy',
   darkMode: true,
-  showNumbers: true,
   // Puzzle data
   gridW: 0, gridH: 0,
   cells: null,          // [[emoji|number], ...] flat or 2D
@@ -2051,8 +2046,6 @@ function showStats() {
 function showSettings() {
   const dt = document.getElementById('toggle-dark');
   dt.classList.toggle('active', S.darkMode);
-  const nt = document.getElementById('toggle-numbers');
-  nt.classList.toggle('active', S.showNumbers);
   S.selectedScreenBeforeSettings = S.screen;
   showScreen('settings');
 }
@@ -2061,10 +2054,6 @@ function toggleDark() {
   S.darkMode = !S.darkMode;
   document.body.classList.toggle('dark', S.darkMode);
   savePersisted();
-}
-
-function toggleNumbers() {
-  S.showNumbers = !S.showNumbers;
 }
 
 // ============================================================
@@ -2138,11 +2127,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const t = document.getElementById('toggle-dark');
     t.classList.toggle('active', S.darkMode);
     savePersisted();
-  });
-
-  document.getElementById('toggle-numbers').addEventListener('click', () => {
-    S.showNumbers = !S.showNumbers;
-    document.getElementById('toggle-numbers').classList.toggle('active', S.showNumbers);
   });
 
   // Keyboard: Escape to close panel, Ctrl+Z for undo

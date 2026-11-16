@@ -51,7 +51,7 @@ A standard game of Shikaku — a rectangle is subdivided into rectangular region
 
 - Region values can be **any positive integer** (matching real Shikaku rules). In a standard Shikaku grid, the number in each region equals that region's area — so a 4×3 rectangle has value 12. Multiple regions may share the same value; this is completely normal and expected.
 - On puzzle generation, each distinct value present in the grid receives a **fully random** emoji drawn from a pool of available emojis. The assignment is purely random — no semantic relationship between an emoji's appearance and the value it represents.
-- The mapping is consistent for that entire puzzle (e.g. 💩 might always equal 7 for that puzzle, even if two separate regions both have value 7) but hidden until the puzzle is completed or surrendered.
+- The mapping is consistent for that entire puzzle (e.g. 💩 might always equal 7 for that puzzle, even if two separate regions both have value 7). It is **never printed as numbers** — not during play, not on completion, and not after Reveal. Reveal draws the region dividers, and the value of each emoji is then implied by the area of the region containing it.
 
 > **Design principle:** Emojis are used to *obfuscate* numbers, not to hint at them. Each distinct value gets its own emoji (so two regions with value 4 share the same emoji but are spatially distinct). Players must rely entirely on Shikaku logic (region sizes) to deduce which emoji corresponds to which value. The visual randomness of emojis adds a layer of cognitive dissonance that makes solved grids feel surprising ("Wait, the poop emoji was 4?!").
 
@@ -193,9 +193,11 @@ Before banding, Hard puzzles ranged over 2,900–112,600 nodes — a forty-fold 
 | **Complete region** | Release finger / lift mouse when the rectangle is correct. | Region is drawn and stored. No immediate validation — regions are only checked when all cells are covered. |
 | **Cancel draw** | Tap away from the current rectangle or press Esc/Back. | Deselects without committing. |
 | **Undo** | Button or swipe gesture (or Ctrl+Z on desktop). | Reverses the last region placement; any regions drawn *inside* an undone region are also removed. |
-| **Reveal solution**  | Button (shows divider). | Reveals all remaining divisions and maps; can be used only after giving up the puzzle. |
+| **Reveal solution**  | Button (shows divider). | Draws every remaining region divider and ends the puzzle. The emoji→value mapping is never printed; it is implied by region area. |
 
 There is no hint mechanic. Undo and Reveal are the only aids, and Reveal ends the puzzle.
+
+Settings (⚙️) exposes **Dark Mode** only. There is no option to display the hidden numbers at any point, including after Reveal.
 
 #### 5.3 Region management
 
