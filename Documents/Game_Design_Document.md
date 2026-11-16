@@ -233,7 +233,7 @@ Tier descriptions:
 
 ### 5.1 Screens
 
-Six screens, all in one document, toggled by a single `.screen.active` class. Everything in the header is always available.
+Five screens, all in one document, toggled by a single `.screen.active` class. Everything in the header is always available.
 
 ```
 menu ──▶ game ──▶ complete ──▶ game (next puzzle) │ menu
@@ -241,14 +241,13 @@ menu ──▶ game ──▶ complete ──▶ game (next puzzle) │ menu
   └──▶ tutorial ────┘ (ends at menu)
 
 header: 🏆 ──▶ stats ──▶ back returns to the screen you came from
-header: ⚙️ ──▶ settings ─▶ back returns to the screen you came from
 ```
 
 Game screen as laid out (row mode, viewport wider than 700 px):
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ Emojikaku                                          🌙  🏆  ⚙️  │
+│ Emojikaku                                              🌙  🏆  │
 │                                                                  │
 │ ← Menu                                        1:24               │
 │                                                                  │
@@ -268,7 +267,7 @@ The filled rectangle is a player-drawn region of area 4 — the centred `4` is i
 
 ### 5.2 Header and menu
 
-- **Header:** the wordmark `Emojikaku`, then the theme button (shows 🌙 while dark, ☀️ while light; one click toggles), 🏆 (stats), ⚙️ (settings).
+- **Header:** the wordmark `Emojikaku`, then the theme button (shows 🌙 while dark, ☀️ while light; one click toggles, on by default), 🏆 (stats).
 - **Menu:** 🧩❓ mark, one-line pitch ("Divide the grid into rectangles. Each emoji hides a number — deduce which is which."), four difficulty chips (🟢 Easy, 🔵 Medium, 🟣 Hard, 🔴 Expert, Easy preselected), ▶ Play, ✨ Tutorial. Difficulty choice is per-session and is not remembered between loads.
 
 ### 5.3 Controls & interactions
@@ -282,7 +281,7 @@ The filled rectangle is a player-drawn region of area 4 — the centred `4` is i
 | **Clear** | 🗑 button. | Deletes every drawn region. Not itself undoable, and it does not clear the history (§11). |
 | **Reveal** | 🔍 button, behind a confirm ("Reveal the solution? This ends the puzzle."). | Draws every solution region with dividers and area labels, disables Undo/Reveal/Clear and the guesses panel, stops the timer. The puzzle is over; there is no way back into it except ← Menu. The emoji→value mapping is never labelled — it is implied by region area. |
 
-There is no hint mechanic. Undo, Clear and Reveal are the only aids. Settings (⚙️) exposes **Dark Mode** only; there is no option to display the hidden numbers at any point, including after Reveal.
+There is no hint mechanic. Undo, Clear and Reveal are the only aids. The only setting is the header theme button; there is no option to display the hidden numbers at any point, including after Reveal.
 
 There is no multi-select, no region resizing, no rotation, no swipe gesture, and no "tap two opposite corners" drawing mode.
 
@@ -299,11 +298,7 @@ A read-only scratchpad the game builds for you from what you have drawn — the 
 
 Four difficulty tabs (🟢 Easy / 🔵 Medium / 🟣 Hard / 🔴 Expert), the current menu difficulty preselected, and three cards for the selected tab: **Solved**, **Best**, **Average**. Empty tiers show `—` for both times. Back returns to the screen the player was on.
 
-### 5.6 Settings screen (⚙️)
-
-One row: **Dark Mode**, a Material-style switch. Dark mode is on by default. There are no other options.
-
-### 5.7 Completion
+### 5.6 Completion
 
 - **Success:** 🎉, "Puzzle Solved!", a card reading "Well done.", the line `Solved in m:ss`, suffixed ` — new best!` when the time beats that tier's record, then ▶ Next Puzzle (same difficulty, new puzzle) and Menu.
 - **Failure:** 😕, "Not Quite Right", the explanation that correct regions are kept and incorrect ones removed, then ↩ Resume (§2.4). No time is shown or recorded.
