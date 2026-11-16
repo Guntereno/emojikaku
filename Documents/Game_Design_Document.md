@@ -337,11 +337,13 @@ A Material-flavoured flat look built entirely from CSS custom properties, with l
 
 The grid is an inline **SVG**, rebuilt from scratch on every change (no per-cell DOM nodes, no canvas):
 
-- Layer 0 grid background (rounded 6 px), layer 1 cell rectangles (rounded 3 px, translucent white on the grid background), layer 2 player/solution region fills with their area labels, layer 3 emoji glyphs on top so they are never hidden.
+- Layer 0 grid background (rounded 6 px), layer 1 cell rectangles (rounded 3 px, translucent white on the grid background), layer 2 player/solution region fills with their area labels, layer 2b draw-preview and incorrect outlines, layer 3 emoji glyphs on top so they are never hidden.
 - Cell size is computed to fit the viewport: available width minus the guesses panel (row mode) or the full width (column mode), available height minus 56 px header and 72 px control bar. Cell gap 2 px, outer padding 4 px. Re-computed on a 150 ms-debounced window resize.
 - Region colours cycle through the nine pastels by creation order, so adjacent regions rarely collide.
 - Area labels use the theme's foreground colour at full opacity, so they read against the region fill in both themes.
-- Every colour is read from the theme when the SVG is built and baked into it, so a theme change repaints the board (an in-game toggle keeps the same regions).
+- Every colour is read from the theme when the SVG is built and baked into it, so a theme change repaints the board (an in-game toggle keeps the same regions) and repaints any tutorial diagram on screen.
+- The draw-preview and incorrect outlines are painted as part of these layers and styled by class, not by per-region attributes, so their 4 px strokes are theme-correct everywhere they appear: white in dark mode, `#b71c1c` in light (§2.4).
+- One renderer, `drawBoard(svg, model)`, paints the playable grid **and** the tutorial diagrams (§8.1). It sets both `width`/`height` and a matching `viewBox`: the game pins the pixel size because the pointer math assumes 1 CSS px = 1 SVG user unit, while the slides let CSS scale the same board down in a narrow column.
 
 ### 7.3 Emoji presentation
 
@@ -356,21 +358,27 @@ The grid is an inline **SVG**, rebuilt from scratch on every change (no per-cell
 There is no forced first-run tour. Tutorial is an optional ✨ button on the menu, and playing immediately without it is supported.
 
 ```
-Step 1 — What is Shikaku?      🧩   plain Shikaku rules in three sentences.
-Step 2 — The Emoji Twist       🎲   numbers become emojis, random mapping per puzzle,
-                                    shown as a static side-by-side pair of 3×3 mini
-                                    grids ("Numbers" vs "Emojis").
-Step 3 — How to Draw           ✋   drag a rectangle, release when the area matches the
-                                    hidden number; one emoji per region.
+Step 1 — What is Shikaku?      🧩   plain Shikaku rules in three sentences, drawn as a pair:
+                                    the puzzle (four number clues on an empty grid) →
+                                    the same grid divided into fills; the clue digit already
+                                    states the area, so no extra labels are painted.
+Step 2 — The Emoji Twist       🎲   the same division as a pair: "what you see" (four emoji
+                                    clues) → "what is hidden" (fills plus area numbers), with
+                                    one mapping line: 🍎 = 6   🌸 = 3   ⭐ = 2   ⚽ = 1.
+Step 3 — How to Draw           ✋   pair: an accent draw-preview around the 6-cell rectangle
+                                    mid-drag → a 4 px outline around a 4-cell rectangle that
+                                    holds two emojis (🌸 and ⚽), i.e. what gets rejected.
 Step 4 — Ready!                🚀   "Use ↩ Undo if you make a mistake. Click Play and
                                     have fun!" → returns to the menu.
 ```
 
 ← Back / Next → navigation; the last button reads "Let's Play! 🎉" and returns to the menu rather than starting a puzzle.
 
+The three diagrams are the **same hand-authored 4×3 board** — regions of area 6, 3, 2 and 1, one clue each, with the clues deliberately *not* in a region's corner cell so the picture does not teach a false rule (§2.1). It is painted by `drawBoard()`, the game's own board renderer (§7.2), at a fixed 38 px cell, so the tutorial can never drift from the look of a real board. The board is fixed rather than generated: it must fit two-across in the tutorial column and stay identical between visits, and the Easy generator is not obliged to produce a four-value layout. Its emojis come from four different pool categories and carry no meaning (§2.5).
+
 ### 8.2 What onboarding does not do
 
-It is text-and-static-diagrams only: no interactive drawing exercise, no animated solved grid, no scratchpad lesson (there is nothing to teach there), and it is never shown automatically. An interactive first-puzzle walkthrough is future work (§10).
+It is painted-and-static only: the diagrams are real SVG boards, but nothing on them can be dragged, nothing animates, and they are not a puzzle — the example board is never playable (§10.2). There is no scratchpad lesson (there is nothing to teach there), and the tutorial is never shown automatically. An interactive first-puzzle walkthrough is future work (§10).
 
 ## 9. Technical Notes (as built)
 
@@ -433,7 +441,7 @@ Recorded so they are not quietly re-added:
 |--------------------|-----|
 | **Hints** | Every puzzle is provably solvable with the taught rules, so a hint is an admission that the prover is wrong. Removed with its button, per-puzzle counter and `hint()` helper. |
 | **Scratchpad / value declaration** (double-tap or long-press an emoji to claim its value) | Duplicates what the guesses panel already derives from the player's own regions, and would have been an unvalidated second source of truth. |
-| **Displaying the hidden numbers**, including after Reveal | Would remove the only thing the game asks the player to do. The "Show Numbers on Reveal" setting was a no-op and was deleted. |
+| **Displaying the hidden numbers**, including after Reveal | Would remove the only thing the game asks the player to do. The "Show Numbers on Reveal" setting was a no-op and was deleted. The exemption is in-game only: the tutorial's example board (§8.1) prints plain numbers because nothing is hidden there — it is a diagram, and it is never playable. |
 | **Lifetime solved counter, streak counter, "weird facts"** | The streak measured a habit the game does not support (no daily content); the facts card had no data behind it; a cross-tier solved count is not a useful number. Stats are per tier only (§6.1). |
 | **Mistake-rate statistics** | With uniqueness guaranteed, "not quite right" is pure player error and not a signal worth surfacing. |
 | **Per-cell marks / pencil candidates** | Shikaku's own notation does not help when the numbers are hidden; region sizes carry the reasoning. |

@@ -198,16 +198,16 @@ header h1 {
 .tutorial-emoji { font-size: 3.5rem; margin: 20px 0; }
 .tutorial-text { font-size: 1.05rem; line-height: 1.6; margin-bottom: 20px; color: var(--on-surface-medium); }
 
-.tutorial-pair { display: flex; gap: 20px; justify-content: center; margin: 16px 0; }
+.tutorial-pair { display: flex; gap: 20px; justify-content: center; margin: 16px 0; flex-wrap: wrap; }
 
 .tutorial-box { text-align: center; }
 .tutorial-box .label { font-size: 0.75rem; opacity: 0.5; margin-bottom: 8px; }
 
-.mini-grid { display: grid; gap: 2px; background: var(--fg); padding: 2px; border-radius: 4px; }
-.mini-cell {
-  width: 48px; height: 48px; display: flex; align-items: center; justify-content: center;
-  background: var(--bg); font-size: 1.3rem; font-weight: 600;
-}
+/* viewBox scales the diagram down rather than repainting it at a smaller cell size,
+   so a pair of boards fits the tutorial column at any phone width. */
+.tutorial-board { flex: 0 1 166px; }
+.tutorial-board svg { display: block; width: 100%; height: auto; }
+.tutorial-legend { font-size: 0.95rem; line-height: 1.6; margin-top: 14px; color: var(--on-surface-medium); }
 
 .tutorial-nav { display: flex; gap: 12px; margin-top: 24px; justify-content: center; }
 
@@ -336,7 +336,14 @@ header h1 {
   dominant-baseline: central;
 }
 
-.region-value { fill: var(--fg); }
+.region-value, .clue-value { fill: var(--fg); }
+
+.draw-preview-rect {
+  pointer-events: none;
+  fill: rgba(224, 122, 95, 0.2);
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
 
 .minus-preview {
   position: absolute;
@@ -360,7 +367,7 @@ header h1 {
 .dark .incorrect-overlay rect {
   pointer-events: none;
   fill: rgba(255, 82, 82, 0.35) !important;
-  stroke: #b71c1c !important;
+  stroke: #ffffff !important;
   stroke-width: 4 !important;
   rx: 6 !important;
   ry: 6 !important;
@@ -481,10 +488,6 @@ header h1 {
   #guide-table {
     font-size: 0.75rem;
   }
-}
-
-@media (max-width: 380px) {
-  .mini-cell { width: 42px; height: 42px; font-size: 1.1rem; }
 }
 </style>
 </head>
@@ -626,7 +629,7 @@ let S = {
   puzzleDifficulty: 'easy',
   selectedScreenBeforeSettings: 'menu',
   // Incorrect-region overlays shown after failed completion check
-  _incorrectRegions: null,   // [{cells, ox, oy, ow, oh}] or null
+  _incorrectRegions: null,   // cell lists of the regions a failed check flagged, or null
   _dismissOverlays: false
 };
 
@@ -1044,11 +1047,128 @@ function startPuzzle() {
 // ============================================================
 const CELL_GAP = 2;       // gap between cells inside the grid
 const PADDING = 4;        // padding around grid content inside SVG
+const SVG_NS = 'http://www.w3.org/2000/svg';
+let cellSize = 0;         // set by computeGridSize(); read by the pointer and preview paths
 
 // Vertical chrome offsets — header + controls bar eat into viewport height
 const HEADER_H = 56;            // game-header + margins
 const CONTROLS_H = 72;          // button row + margins
 const VIEWPORT_MARGIN = 12;     // small safety buffer
+
+function svgEl(tag, attrs) {
+  const e = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
+  return e;
+}
+
+// Bounding rect of a set of cells, in the SVG's coordinate space.
+function regionRect(cells, w, cs) {
+  let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
+  for (const idx of cells) {
+    const [r, c] = idxToRC(idx, w);
+    if (r < minR) minR = r; if (r > maxR) maxR = r;
+    if (c < minC) minC = c; if (c > maxC) maxC = c;
+  }
+  return {
+    ox: PADDING + minC * (cs + CELL_GAP),
+    oy: PADDING + minR * (cs + CELL_GAP),
+    ow: (maxC - minC + 1) * cs + (maxC - minC) * CELL_GAP,
+    oh: (maxR - minR + 1) * cs + (maxR - minR) * CELL_GAP
+  };
+}
+
+// Paints a whole board. Everything the look depends on arrives in `b`, so the played
+// board and the tutorial diagrams cannot drift apart. Returns the painted pixel size.
+//   b = { w, h, cellSize, clues, regions, preview, incorrect, interactive, values }
+function drawBoard(svg, b) {
+  const w = b.w, h = b.h, cs = b.cellSize;
+  const svgW = w * cs + (w - 1) * CELL_GAP + PADDING * 2;
+  const svgH = h * cs + (h - 1) * CELL_GAP + PADDING * 2;
+
+  svg.setAttribute('width', svgW);
+  svg.setAttribute('height', svgH);
+  // The slides scale this down with CSS width; the game pins pixels instead because
+  // the pointer math needs one CSS pixel per SVG user unit.
+  svg.setAttribute('viewBox', `0 0 ${svgW} ${svgH}`);
+  svg.innerHTML = '';
+
+  const isDark = document.body.classList.contains('dark');
+  const cellFill = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.45)';
+
+  // layer 0: grid background
+  svg.appendChild(svgEl('rect', {
+    x: PADDING, y: PADDING, width: svgW - PADDING * 2, height: svgH - PADDING * 2, rx: 6, ry: 6,
+    fill: getComputedStyle(document.body).getPropertyValue('--grid-bg').trim() || '#EDEBE6'
+  }));
+
+  // layer 1: cells
+  const cellsGroup = svgEl('g', { class: 'cells-layer' });
+  for (let idx = 0; idx < w * h; idx++) {
+    const [r, c] = idxToRC(idx, w);
+    const rect = svgEl('rect', {
+      x: PADDING + c * (cs + CELL_GAP), y: PADDING + r * (cs + CELL_GAP),
+      width: cs, height: cs, rx: 3, ry: 3, fill: cellFill
+    });
+    if (b.interactive) rect.style.cursor = 'pointer';
+    rect.dataset.idx = idx;
+    cellsGroup.appendChild(rect);
+  }
+  svg.appendChild(cellsGroup);
+
+  // layer 2: player regions, with the area stated at the region centre
+  const regionsGroup = svgEl('g', { class: 'regions-layer' });
+  b.regions.forEach((region, i) => {
+    const { ox, oy, ow, oh } = regionRect(region.cells, w, cs);
+    const fill = getComputedStyle(document.body).getPropertyValue(`--region-fill-${region.fill}`).trim();
+    const rect = svgEl('rect', { x: ox, y: oy, width: ow, height: oh, rx: 5, ry: 5, fill });
+    if (b.interactive) rect.style.cursor = 'pointer';
+    rect.dataset.regionIndex = i;
+    regionsGroup.appendChild(rect);
+
+    if (b.values !== false && region.cells.length > 1) {
+      const label = svgEl('text', {
+        x: ox + ow / 2, y: oy + oh / 2 + oh * 0.08,
+        'font-size': Math.max(9, Math.floor(Math.min(ow, oh) * 0.25)),
+        'font-weight': '600',
+        class: 'cell-label region-value'
+      });
+      label.textContent = region.cells.length;
+      regionsGroup.appendChild(label);
+    }
+  });
+  svg.appendChild(regionsGroup);
+
+  // layer 2b: draw preview and incorrect-region outlines, below the clues
+  if (b.preview) {
+    const { ox, oy, ow, oh } = regionRect(b.preview, w, cs);
+    svg.appendChild(svgEl('rect', { x: ox, y: oy, width: ow, height: oh, rx: 6, ry: 6, class: 'draw-preview-rect' }));
+  }
+  if (b.incorrect) {
+    const group = svgEl('g', { class: 'incorrect-overlay' });
+    for (const cells of b.incorrect) {
+      const { ox, oy, ow, oh } = regionRect(cells, w, cs);
+      group.appendChild(svgEl('rect', { x: ox, y: oy, width: ow, height: oh, rx: 6, ry: 6 }));
+    }
+    svg.appendChild(group);
+  }
+
+  // layer 3: clue glyphs
+  const clueGroup = svgEl('g', { class: 'clue-layer' });
+  for (let idx = 0; idx < w * h; idx++) {
+    const glyph = b.clues[idx];
+    if (!glyph) continue;
+    const [r, c] = idxToRC(idx, w);
+    const text = svgEl('text', {
+      x: PADDING + c * (cs + CELL_GAP) + cs / 2, y: PADDING + r * (cs + CELL_GAP) + cs / 2,
+      'font-size': Math.max(8, Math.floor(cs * 0.5)), class: 'cell-label clue-value'
+    });
+    text.textContent = glyph;
+    clueGroup.appendChild(text);
+  }
+  svg.appendChild(clueGroup);
+
+  return { svgW, svgH };
+}
 
 function computeGridSize() {
   const container = document.getElementById('grid-container');
@@ -1080,184 +1200,25 @@ function computeGridSize() {
 
 function renderGrid() {
   computeGridSize();
-  _clearOverlays();
-  const pendingOverlays = S._incorrectRegions;
-  S._incorrectRegions = null;
 
   const container = document.getElementById('grid-container');
   const svg = document.getElementById('game-grid-svg');
-  const w = S.gridW, h = S.gridH;
 
-  // --- sizing --------------------------------------------------
-  computeGridSize();
-  const gridW_px = S.gridW * cellSize + (S.gridW - 1) * CELL_GAP;
-  const gridH_px = S.gridH * cellSize + (S.gridH - 1) * CELL_GAP;
-  const svgW = PADDING * 2 + gridW_px;
-  const svgH = PADDING * 2 + gridH_px;
+  // Red outlines from a failed completion check are painted by this render only
+  const incorrect = S._incorrectRegions;
+  S._incorrectRegions = null;
 
-  svg.setAttribute('width', svgW);
-  svg.setAttribute('height', svgH);
+  const { svgW, svgH } = drawBoard(svg, {
+    w: S.gridW, h: S.gridH, cellSize,
+    clues: S.cellEmojis,
+    regions: S.playerRegions.map((pr, i) => ({ cells: pr.cells, fill: (i % 9) + 1 })),
+    incorrect,
+    interactive: !revealed
+  });
+
+  // The container is flex-sized, so it needs pixel dimensions as well as SVG attributes
   svg.style.width = svgW + 'px';
   svg.style.height = svgH + 'px';
-  svg.innerHTML = '';
-
-  // NS helper
-  const NS = 'http://www.w3.org/2000/svg';
-  function el(tag, attrs) {
-    const e = document.createElementNS(NS, tag);
-    for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
-    return e;
-  }
-
-  // --- defs (clip + filters) -----------------------------------
-  const defs = el('defs');
-
-  // Clip path for the grid background so its corners stay rounded
-  const bgCornerRadius = 6;
-  const bgClipPath = el('clipPath', { id: 'grid-clip' });
-  const bgClipRect = el('rect', {
-    x: PADDING, y: PADDING,
-    width: w * cellSize + (w - 1) * CELL_GAP,
-    height: h * cellSize + (h - 1) * CELL_GAP,
-    rx: bgCornerRadius, ry: bgCornerRadius
-  });
-  bgClipPath.appendChild(bgClipRect);
-  defs.appendChild(bgClipPath);
-
-  svg.appendChild(defs);
-
-  // --- layer 0: grid background filled rounded rect ------------
-  const gridBg = el('rect', {
-    x: PADDING, y: PADDING,
-    width: w * cellSize + (w - 1) * CELL_GAP,
-    height: h * cellSize + (h - 1) * CELL_GAP,
-    rx: bgCornerRadius, ry: bgCornerRadius,
-    fill: getComputedStyle(document.body).getPropertyValue('--grid-bg').trim() || '#EDEBE6'
-  });
-  svg.appendChild(gridBg);
-
-  // --- lookup: cell → player region index ----------------------
-  const cellRegion = new Int16Array(w * h).fill(-1);
-  for (let i = 0; i < S.playerRegions.length; i++) {
-    for (const idx of S.playerRegions[i].cells) cellRegion[idx] = i;
-  }
-
-  // --- layer 1: cell background rects only (no emoji text) ------
-  const cellGroup = el('g', { class: 'cells-layer' });
-
-  for (let r = 0; r < h; r++) {
-    for (let c = 0; c < w; c++) {
-      const idx = rcToIdx(r, c, w);
-      const cx = PADDING + c * (cellSize + CELL_GAP);
-      const cy = PADDING + r * (cellSize + CELL_GAP);
-
-      const cellCornerRadius = 3;
-      
-      // Subtle cell background: slightly lighter than grid bg for visibility
-      const isDark = document.body.classList.contains('dark');
-      const cellFill = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.45)';
-
-      const rect = el('rect', {
-        x: cx, y: cy,
-        width: cellSize,
-        height: cellSize,
-        rx: cellCornerRadius, ry: cellCornerRadius,
-        fill: cellFill
-      });
-
-      // Make each cell react to clicks/taps (for undo and emoji tap)
-      rect.style.cursor = 'pointer';
-      rect.dataset.idx = idx;
-      cellGroup.appendChild(rect);
-    }
-  }
-
-  svg.appendChild(cellGroup);
-
-  // --- layer 2: player/solution region overlays (filled rounded rects) --
-  if (S.playerRegions.length > 0) {
-    const regionGroup = el('g', { class: 'regions-layer' });
-
-    for (let i = 0; i < S.playerRegions.length; i++) {
-      const pr = S.playerRegions[i];
-
-      // Find bounding rect of all cells in this player region
-      let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
-      for (const idx of pr.cells) {
-        const [rr, cc] = idxToRC(idx, w);
-        if (rr < minR) minR = rr; if (rr > maxR) maxR = rr;
-        if (cc < minC) minC = cc; if (cc > maxC) maxC = cc;
-      }
-
-      const ox = PADDING + minC * (cellSize + CELL_GAP);
-      const oy = PADDING + minR * (cellSize + CELL_GAP);
-      const ow = (maxC - minC + 1) * cellSize + (maxC - minC) * CELL_GAP;
-      const oh = (maxR - minR + 1) * cellSize + (maxR - minR) * CELL_GAP;
-
-      // Per-region fill color from the palette
-      const palIdx = ((i % 9) + 1);
-      let bgColor = getComputedStyle(document.body).getPropertyValue(`--region-fill-${palIdx}`).trim();
-      if (!bgColor || bgColor === '') {
-        bgColor = `hsla(${(i * 47) % 360}, 55%, 72%, ${revealed ? 0.5 : 0.45})`;
-      }
-
-      const overlayRect = el('rect', {
-        x: ox, y: oy,
-        width: ow, height: oh,
-        rx: 5, ry: 5,
-        fill: bgColor
-      });
-      if (!revealed) {
-        overlayRect.style.cursor = 'pointer';
-      }
-      overlayRect.dataset.regionIndex = i;
-      regionGroup.appendChild(overlayRect);
-
-      // Value label in center of the region
-      const area = pr.cells.length;
-      if (area > 1) {
-        const valText = el('text', {
-          x: ox + ow / 2,
-          y: oy + oh / 2 + oh * 0.08,
-          'font-size': Math.max(9, Math.floor(Math.min(ow, oh) * 0.25)),
-          'font-weight': '600',
-          class: 'cell-label region-value'
-        });
-        valText.textContent = area;
-        regionGroup.appendChild(valText);
-      }
-    }
-
-    svg.appendChild(regionGroup);
-  }
-
-  // --- layer 3: emoji text (on top of everything so they're always visible) --
-  const emojiGroup = el('g', { class: 'emoji-layer' });
-  for (let r = 0; r < h; r++) {
-    for (let c = 0; c < w; c++) {
-      const idx = rcToIdx(r, c, w);
-      const cx = PADDING + c * (cellSize + CELL_GAP);
-      const cy = PADDING + r * (cellSize + CELL_GAP);
-      const emoji = S.cellEmojis[idx];
-      if (emoji) {
-        const fontSize = Math.max(8, Math.floor(cellSize * 0.5));
-        const text = el('text', {
-          x: cx + cellSize / 2,
-          y: cy + cellSize / 2,
-          'font-size': fontSize,
-          class: 'cell-label'
-        });
-        text.textContent = emoji;
-        emojiGroup.appendChild(text);
-      }
-    }
-  }
-  svg.appendChild(emojiGroup);
-
-  // Restore incorrect region overlays only from the failed completion check (first renderGrid call)
-  if (pendingOverlays) {
-    renderIncorrectOverlays(svg, pendingOverlays);
-  }
 
   // --- bind events ---------------------------------------------------------
   if (!revealed && !S._listenersBound) {
@@ -1493,24 +1454,16 @@ function updatePreview() {
     }
   }
 
-  // Position preview using computed layout
+  // Same geometry the renderer uses for region rects, so the preview lines up with them
   const container = document.getElementById('grid-container');
-  const firstIdx = rcToIdx(minR, minC, S.gridW);
-  const [firstRR, firstCC] = idxToRC(firstIdx, S.gridW);
-  const lastIdx = rcToIdx(maxR, maxC, S.gridW);
-  const [lastRR, lastCC] = idxToRC(lastIdx, S.gridW);
-
-  const pxLeft = PADDING + firstCC * (cellSize + CELL_GAP);
-  const pyTop = PADDING + firstRR * (cellSize + CELL_GAP);
-  const pxWidth = (lastCC - firstCC + 1) * cellSize + (lastCC - firstCC) * CELL_GAP;
-  const pxHeight = (lastRR - firstRR + 1) * cellSize + (lastRR - firstRR) * CELL_GAP;
+  const { ox, oy, ow, oh } = regionRect([...drawCells], S.gridW, cellSize);
 
   previewEl = document.createElement('div');
   previewEl.className = 'draw-preview';
-  previewEl.style.left = `${pxLeft}px`;
-  previewEl.style.top = `${pyTop}px`;
-  previewEl.style.width = `${pxWidth}px`;
-  previewEl.style.height = `${pxHeight}px`;
+  previewEl.style.left = `${ox}px`;
+  previewEl.style.top = `${oy}px`;
+  previewEl.style.width = `${ow}px`;
+  previewEl.style.height = `${oh}px`;
 
   container.appendChild(previewEl);
 }
@@ -1585,11 +1538,10 @@ function checkCompletion() {
     savePersisted();
     showCompletion(true, newBest);
   } else {
-    // Show red overlays on incorrect regions before the "Not Quite Right" screen covers the grid
+    // Red outlines on the wrong regions, painted by the next grid render
     if (result.wrong.length > 0 && S._incorrectRegions === null) {
-      computeOverlayRects(result.wrong);
-      const svg = document.getElementById('game-grid-svg');
-      if (svg) renderIncorrectOverlays(svg, S._incorrectRegions);
+      S._incorrectRegions = result.wrong.map(pr => pr.cells);
+      renderGrid();
       S._dismissOverlays = true;
     }
     showCompletion(false);
@@ -1843,59 +1795,8 @@ function showToast(message, duration) {
 // ============================================================
 function _clearOverlays() {
   const svg = document.getElementById('game-grid-svg');
-  const existing = svg.querySelector('.incorrect-overlay-group');
+  const existing = svg.querySelector('.incorrect-overlay');
   if (existing) existing.remove();
-}
-
-function renderIncorrectOverlays(svg, regions) {
-  let overlayGroup = svg.querySelector('.incorrect-overlay-group');
-  if (!overlayGroup) {
-    const NS = 'http://www.w3.org/2000/svg';
-    overlayGroup = document.createElementNS(NS, 'g');
-    overlayGroup.classList.add('incorrect-overlay-group', 'incorrect-overlay');
-    // Insert right before the emoji layer so overlays sit below emoji text
-    const emojiGroup = svg.querySelector('.emoji-layer');
-    if (emojiGroup) svg.insertBefore(overlayGroup, emojiGroup);
-    else svg.appendChild(overlayGroup);
-  }
-  overlayGroup.innerHTML = '';
-
-  for (const r of regions) {
-    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    rect.setAttribute('x', r.ox);
-    rect.setAttribute('y', r.oy);
-    rect.setAttribute('width', r.ow);
-    rect.setAttribute('height', r.oh);
-    if (S.darkMode) {
-      rect.setAttribute('fill', 'rgba(255, 82, 82, 0.4)');
-      rect.setAttribute('stroke', '#ffffff');
-    } else {
-      rect.setAttribute('fill', 'rgba(239, 68, 68, 0.15)');
-      rect.setAttribute('stroke', '#b71c1c');
-    }
-    rect.setAttribute('stroke-width', '4');
-    rect.setAttribute('rx', '6');
-    rect.setAttribute('ry', '6');
-    overlayGroup.appendChild(rect);
-  }
-}
-
-function computeOverlayRects(wrongRegions) {
-  S._incorrectRegions = wrongRegions.map(r => {
-    let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
-    for (const idx of r.cells) {
-      const [cr, cc] = idxToRC(idx, S.gridW);
-      if (cr < minR) minR = cr; if (cr > maxR) maxR = cr;
-      if (cc < minC) minC = cc; if (cc > maxC) maxC = cc;
-    }
-    return {
-      cells: r.cells,
-      ox: PADDING + minC * (cellSize + CELL_GAP),
-      oy: PADDING + minR * (cellSize + CELL_GAP),
-      ow: (maxC - minC + 1) * cellSize + (maxC - minC) * CELL_GAP,
-      oh: (maxR - minR + 1) * cellSize + (maxR - minR) * CELL_GAP
-    };
-  });
 }
 
 // ============================================================
@@ -1909,22 +1810,63 @@ function resumeTimer() { S.timer = S._timerPausedAt || 0; startTimer(); }
 // ============================================================
 // TUTORIAL
 // ============================================================
+// Hand-authored example for the diagrams: never generated and never playable, so the
+// slides always show the same four values in the same places. Clues sit away from the
+// region's first cell so the picture does not teach a "the clue is in the corner" rule.
+const EXAMPLE = {
+  w: 4, h: 3,
+  regions: [
+    { value: 6, cells: [0, 1, 2, 4, 5, 6], clue: 5, fill: 1 },
+    { value: 3, cells: [8, 9, 10], clue: 9, fill: 3 },
+    { value: 2, cells: [3, 7], clue: 7, fill: 2 },
+    { value: 1, cells: [11], clue: 11, fill: 4 }
+  ]
+};
+const NUMBER_CLUES = { 6: '6', 3: '3', 2: '2', 1: '1' };
+const EMOJI_CLUES = { 6: '🍎', 3: '🌸', 2: '⭐', 1: '⚽' };
+const TUTORIAL_CELL = 38;  // two of these boards fit side by side in the tutorial column
+
+// clueGlyphs maps a region value to its clue glyph; null paints a board with no clues.
+function exampleBoard(clueGlyphs, opts) {
+  const clues = new Array(EXAMPLE.w * EXAMPLE.h).fill('');
+  if (clueGlyphs) for (const r of EXAMPLE.regions) clues[r.clue] = clueGlyphs[r.value];
+  return {
+    w: EXAMPLE.w, h: EXAMPLE.h, cellSize: TUTORIAL_CELL, clues,
+    regions: opts.regions ? EXAMPLE.regions.map(r => ({ cells: r.cells, fill: r.fill })) : [],
+    preview: opts.preview, incorrect: opts.incorrect, interactive: false,
+    // Slide 1 shows the digit clue, so its solved board must not also state the area
+    values: opts.values
+  };
+}
+
 const TUTORIAL_STEPS = [
   {
     title: "What is Shikaku?",
     emoji: "🧩",
-    text: "A rectangular grid must be divided into rectangle regions. Each region contains exactly one number, and the area of the rectangle equals that number."
+    text: "A rectangular grid must be divided into rectangle regions. Each region contains exactly one number, and the area of the rectangle equals that number.",
+    boards: [
+      { label: 'the puzzle', model: exampleBoard(NUMBER_CLUES, {}) },
+      { label: 'solved', model: exampleBoard(NUMBER_CLUES, { regions: true, values: false }) }
+    ]
   },
   {
     title: "The Emoji Twist",
     emoji: "🎲",
     text: "The numbers are now emojis! Each emoji represents a different number and the mapping is random for each puzzle.",
-    hasDemo: true
+    boards: [
+      { label: 'what you see', model: exampleBoard(EMOJI_CLUES, {}) },
+      { label: 'what is hidden', model: exampleBoard(null, { regions: true }) }
+    ],
+    legend: '🍎 = 6   🌸 = 3   ⭐ = 2   ⚽ = 1'
   },
   {
     title: "How to Draw",
     emoji: "✋",
-    text: "Click and drag across cells to select a rectangle. Release when the area matches the hidden number. Each region must be a perfect rectangle and contain only a single emoji."
+    text: "Click and drag across cells to select a rectangle. Release when the area matches the hidden number. Each region must be a perfect rectangle and contain only a single emoji.",
+    boards: [
+      { label: 'drag a rectangle', model: exampleBoard(EMOJI_CLUES, { preview: EXAMPLE.regions[0].cells }) },
+      { label: 'one emoji per region', model: exampleBoard(EMOJI_CLUES, { incorrect: [[8, 9, 10, 11]] }) }
+    ]
   },
   {
     title: "Ready!",
@@ -1941,32 +1883,31 @@ function renderTutorial() {
   const step = TUTORIAL_STEPS[tutStep];
   const content = document.getElementById('tutorial-content');
 
-  let demoHTML = '';
-  if (step.hasDemo) {
-    demoHTML = `<div class="tutorial-pair">
-      <div class="tutorial-box"><div class="label">Numbers</div>
-        <div class="mini-grid" style="grid-template-columns:repeat(3,48px);">
-          ${'<div class="mini-cell">6</div>'.repeat(6)}${'<div class="mini-cell">1</div>'}${'<div class="mini-cell">2</div>'.repeat(2)}
-        </div>
-      </div>
-      <div class="tutorial-box"><div class="label">Emojis</div>
-        <div class="mini-grid" style="grid-template-columns:repeat(3,48px);">
-          ${'<div class="mini-cell">🍎</div>'.repeat(6)}${'<div class="mini-cell">⭐</div>'}${'<div class="mini-cell">🌸</div>'.repeat(2)}
-        </div>
-      </div>
-    </div>`;
+  let boardsHTML = '';
+  if (step.boards) {
+    boardsHTML = '<div class="tutorial-pair">' + step.boards.map(b =>
+      `<div class="tutorial-box"><div class="label">${b.label}</div><div class="tutorial-board"></div></div>`
+    ).join('') + '</div>';
   }
+  const legendHTML = step.legend ? `<div class="tutorial-legend">${step.legend}</div>` : '';
 
   content.innerHTML = `
     <h2 style="margin-bottom:12px;">${step.title}</h2>
     <div class="tutorial-emoji">${step.emoji}</div>
     <p class="tutorial-text">${step.text}</p>
-    ${demoHTML}
+    ${boardsHTML}${legendHTML}
     <div class="tutorial-nav">
       ${tutStep > 0 ? '<button class="nav-btn secondary-tut" id="tut-prev">← Back</button>' : ''}
       <button class="nav-btn primary" id="tut-next">${tutStep < TUTORIAL_STEPS.length - 1 ? 'Next →' : "Let's Play! 🎉"}</button>
     </div>
   `;
+
+  const slots = content.querySelectorAll('.tutorial-board');
+  (step.boards || []).forEach((b, i) => {
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    slots[i].appendChild(svg);
+    drawBoard(svg, b.model);
+  });
 
   document.getElementById('tut-prev')?.addEventListener('click', () => { tutStep--; renderTutorial(); });
   document.getElementById('tut-next').addEventListener('click', () => {
@@ -2017,7 +1958,10 @@ function applyTheme() {
   const btn = document.getElementById('btn-theme');
   btn.textContent = S.darkMode ? '🌙' : '☀️';
   btn.title = S.darkMode ? 'Switch to light mode' : 'Switch to dark mode';
-  // The board's colours are baked into the SVG when it is drawn, so a theme change needs a repaint
+  // Colours are baked into the SVGs when they are drawn, so a theme change needs a
+  // repaint of every board that could be on screen — including the tutorial diagrams,
+  // which stay mounted when the theme is switched from Settings.
+  renderTutorial();
   if (S.gridW) renderGrid();
 }
 
