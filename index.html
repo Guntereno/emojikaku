@@ -1248,7 +1248,9 @@ function computeGridSize() {
     availH = maxGridH - 8;
   }
 
-  cellSize = Math.max(1, Math.floor(Math.min((availW - PADDING * 2) / w, (availH - PADDING * 2) / h)));
+  // Cell gaps are part of the drawn width, so they come off the budget before the division.
+  const fitCells = (avail, n) => (avail - PADDING * 2 - (n - 1) * CELL_GAP) / n;
+  cellSize = Math.max(1, Math.floor(Math.min(fitCells(availW, w), fitCells(availH, h))));
 }
 
 function renderGrid() {

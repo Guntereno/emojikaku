@@ -352,7 +352,7 @@ A Material-flavoured flat look built entirely from CSS custom properties, with l
 The grid is an inline **SVG**, rebuilt from scratch on every change (no per-cell DOM nodes, no canvas):
 
 - Layer 0 grid background (rounded 6 px), layer 1 cell rectangles (rounded 3 px, translucent white on the grid background), layer 2 player/solution region fills with their area labels, layer 2b draw-preview and incorrect outlines, layer 3 emoji glyphs on top so they are never hidden.
-- Cell size is computed to fit the viewport: available width minus the guesses panel (row mode) or the full width (column mode), available height minus 56 px header and 72 px control bar. Cell gap 2 px, outer padding 4 px. Re-computed on a 150 ms-debounced window resize.
+- Cell size is computed to fit the viewport: available width minus the guesses panel (row mode) or the full width (column mode), available height minus 56 px header and 72 px control bar. Cell gap 2 px, outer padding 4 px. A span of n cells takes n cells plus (n-1) gaps plus the padding, and that whole span is what has to fit, so the board never overshoots the column it sits in (which would clip it). Re-computed on a 150 ms-debounced window resize.
 - Region colours cycle through the nine pastels by creation order, so adjacent regions rarely collide.
 - Area labels use the theme's foreground colour at full opacity, so they read against the region fill in both themes.
 - Every colour is read from the theme when the SVG is built and baked into it, so a theme change repaints the board (an in-game toggle keeps the same regions) and repaints any tutorial diagram on screen.
