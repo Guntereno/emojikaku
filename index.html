@@ -686,22 +686,27 @@ function showScreen(name) {
 // ============================================================
 // Every puzzle shown has a truth to start from: a 1x1 region boxed in by its
 // neighbours, so at least one emoji provably stands for 1 before anything is drawn.
-// Each tier samples candidate puzzles until one lands inside its band. `nodes` is
-// that band's centre: the prover's node count, i.e. how much case-analysis the
-// puzzle demands. Size is no guide to it — two 8×8 puzzles on the same cap
-// measured 2,700 and 67,000 — but it does set a ceiling: an 8×8 grid has been seen to ask for 67,000
-// nodes and a 6×6 never above 900, so each tier's target sits inside what its
-// grids can supply. `caps` are the largest-region limits a tier will try, cheap and
-// promising first; the ones that mostly produce ambiguous divisions stay last.
+// Each tier samples candidate puzzles until one lands inside its band, and the band
+// is the work handed to the player: `ruled` adds up, over the whole solution, every
+// rectangle that was still legal but wrong, and `widest` caps how many rectangles
+// the single busiest step may offer. A candidate needing a busier step than that is
+// thrown away rather than remembered — one brutal step is what a tier is meant to
+// avoid. `minNodes` only keeps a tier from shipping a board the clues barely pin
+// down; the prover's node count is no longer a difficulty target, because on the
+// big grids most of it is the size of the search rather than the depth of the
+// reasoning: cutting an 8×8's nodes eightfold left the player's decisions unchanged.
+// `caps` are the largest-region limits a tier will try, cheap and promising first;
+// the ones that mostly produce ambiguous divisions stay last. The bigger boards use
+// the smaller caps, so they read as more, shorter regions instead of more guesswork.
 // On these boards a candidate costs about a millisecond, so the tiers can afford
 // to sample generously and rarely fall back.
 const GEN_PLAN = {
-  easy:   { caps: [8, 6, 4],   tries: 16, nodes: 45 },
-  medium: { caps: [6, 4, 8],   tries: 24, nodes: 250 },
-  hard:   { caps: [6, 8, 10],  tries: 24, nodes: 1000 },
-  expert: { caps: [10, 8, 12], tries: 40, nodes: 6000 }
+  easy:   { caps: [8, 6, 4],  tries: 16, ruled: 6,  widest: 6,  minNodes: 20 },
+  medium: { caps: [6, 4, 8],  tries: 24, ruled: 14, widest: 9,  minNodes: 120 },
+  hard:   { caps: [5, 6, 8],  tries: 24, ruled: 16, widest: 9,  minNodes: 300 },
+  expert: { caps: [6, 8, 10], tries: 40, ruled: 20, widest: 10, minNodes: 1000 }
 };
-// Log gap, because proof cost spans orders of magnitude: 0.30 ≈ within 35%.
+// Log gap, because one candidate's workload can be several times another's: 0.30 ≈ within 35%.
 const ACCEPT_LOG = 0.30;
 const PROOF_BUDGET = 200000;
 const GEN_MS_LIMIT = 800;
@@ -730,8 +735,12 @@ function generatePuzzle(difficulty) {
       const proof = countDeducibleDivisions(w, ix, PROOF_BUDGET);
       // An unfinished search proves nothing, even if it found one division so far.
       if (proof.aborted || proof.sols !== 1) continue;
+      if (proof.nodes < plan.minNodes) continue;
 
-      const gap = Math.abs(Math.log(proof.nodes / plan.nodes));
+      const cost = stepCost(w, ix, proof.path);
+      if (cost.widest > plan.widest) continue;
+
+      const gap = Math.abs(Math.log(cost.ruledOut / plan.ruled));
       if (gap <= ACCEPT_LOG) return buildEmojiPuzzle(w, h, regions, anchors);
       if (gap < bestGap) { bestGap = gap; best = { w, h, regions, anchors }; }
 
@@ -930,14 +939,15 @@ function hasForcedCell(w, anchors, ix) {
 }
 
 // Counts the divisions the taught rules allow. Two is enough evidence to throw a
-// puzzle away; running out of budget proves nothing. The node count doubles as the
-// difficulty measurement: how much case-analysis the puzzle demands.
+// puzzle away; running out of budget proves nothing. The first division found is
+// remembered as the rectangles that made it, in board order, for stepCost to read.
 function countDeducibleDivisions(w, ix, nodeBudget) {
   const { total, labelCount, rects } = ix;
   const free = new Uint8Array(total).fill(1);
   const areaOfLabel = new Int32Array(labelCount);
   const ownerOfArea = new Int32Array(total + 1).fill(-1);
-  let nodes = 0, sols = 0, aborted = false;
+  const takenCells = [], takenRects = [];
+  let nodes = 0, sols = 0, aborted = false, path = null;
 
   function place(hint) {
     if (aborted) return;
@@ -947,7 +957,7 @@ function countDeducibleDivisions(w, ix, nodeBudget) {
     // is enumerated once.
     let p = -1;
     for (let i = hint; i < total; i++) if (free[i]) { p = i; break; }
-    if (p === -1) { sols++; return; }
+    if (p === -1) { sols++; if (!path) path = { cells: takenCells.slice(), rects: takenRects.slice() }; return; }
 
     const pr = idxToRC(p, w)[0], pc = p % w;
     for (const rect of rects[p]) {
@@ -966,9 +976,13 @@ function countDeducibleDivisions(w, ix, nodeBudget) {
       const prevArea = areaOfLabel[label], prevOwner = ownerOfArea[area];
       areaOfLabel[label] = area;
       ownerOfArea[area] = label;
+      takenCells.push(p);
+      takenRects.push(rect);
 
       place(p + 1);
 
+      takenCells.pop();
+      takenRects.pop();
       areaOfLabel[label] = prevArea;
       ownerOfArea[area] = prevOwner;
       for (let dr = 0; dr < rect.rh; dr++)
@@ -980,7 +994,46 @@ function countDeducibleDivisions(w, ix, nodeBudget) {
   }
 
   place(0);
-  return { sols, nodes, aborted };
+  return { sols, nodes, aborted, path };
+}
+
+/**
+ * The work a puzzle hands the player, read off its one solution: take its regions
+ * in board order and, at each, count the rectangles the clues still allow there.
+ * `ruledOut` adds up the ones that would have been wrong; `widest` is the single
+ * busiest step, because one step with a dozen options feels harder than six steps
+ * with two.
+ */
+function stepCost(w, ix, path) {
+  const { total, labelCount, rects } = ix;
+  const free = new Uint8Array(total).fill(1);
+  const areaOfLabel = new Int32Array(labelCount);
+  const ownerOfArea = new Int32Array(total + 1).fill(-1);
+  let ruledOut = 0, widest = 0;
+
+  for (let k = 0; k < path.rects.length; k++) {
+    const p = path.cells[k], rect = path.rects[k];
+    const pr = idxToRC(p, w)[0], pc = p % w;
+
+    let open = 0;
+    for (const cand of rects[p]) {
+      if (areaOfLabel[cand.label] !== 0 && areaOfLabel[cand.label] !== cand.area) continue;
+      if (ownerOfArea[cand.area] !== -1 && ownerOfArea[cand.area] !== cand.label) continue;
+      let clear = true;
+      for (let dr = 0; dr < cand.rh && clear; dr++)
+        for (let dc = 0; dc < cand.rw && clear; dc++)
+          if (!free[(pr + dr) * w + pc + dc]) clear = false;
+      if (clear) open++;
+    }
+    if (open > widest) widest = open;
+    if (open > 1) ruledOut += open - 1;
+
+    for (let dr = 0; dr < rect.rh; dr++)
+      for (let dc = 0; dc < rect.rw; dc++) free[(pr + dr) * w + pc + dc] = 0;
+    areaOfLabel[rect.label] = rect.area;
+    ownerOfArea[rect.area] = rect.label;
+  }
+  return { ruledOut, widest };
 }
 
 /**

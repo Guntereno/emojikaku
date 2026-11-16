@@ -25,7 +25,7 @@ A standard game of Shikaku — a rectangle is subdivided into rectangular region
 
 1. **Every puzzle is provably unique.** No puzzle may require guessing. This is enforced by a prover at generation time, not by level design (§3.3).
 2. **Every puzzle has a provable first move.** The player is never facing a wall (§3.3).
-3. **Difficulty is measured, not assumed.** The prover's search cost is the dial; board size is not (§4.1).
+3. **Difficulty is measured, not assumed.** The rectangles the player has to rule out are the dial; the prover's search cost and board size are not (§4.1).
 4. **Emojis obfuscate; they never hint.** No semantic relationship between glyph and value (§2.5).
 5. **Minimal aids.** Undo, Clear, Reveal and a passive guesses readout. No hints (§10.2).
 6. **Nothing to install or launch.** A single HTML file that runs offline.
@@ -99,7 +99,7 @@ Generation happens synchronously in the browser at the moment Play is pressed, a
 
 ```
 GeneratePuzzle(difficulty):
-    plan ← GEN_PLAN[difficulty]         // cap ladder, tries per cap, target proof cost
+    plan ← GEN_PLAN[difficulty]      // cap ladder, tries, workload band, ceiling, floor
     best ← none
 
     for cap in plan.caps:
@@ -122,14 +122,23 @@ GeneratePuzzle(difficulty):
             if not HasForcedCell(anchors): continue
 
             // 4. Reject the puzzle unless the clues leave exactly one division.
-            proof ← CountDeducibleDivisions(anchors)
+            //    The prover keeps the single solution it found.
+            proof ← CountDeducibleDivisions(anchors)   // { sols, nodes, aborted, path }
             if proof.aborted or proof.sols ≠ 1: continue
 
-            // 5. Keep candidates at this tier's difficulty. `proof.nodes` counts how
-            //    much case-analysis was needed to see the division is the only one;
-            //    the tier accepts the first candidate within ±35% (log gap ≤ 0.30) of
-            //    its target and otherwise remembers the closest one.
-            gap ← |ln(proof.nodes / plan.targetNodes)|
+            // 5. A board whose clues barely pin anything down is too open for a tier,
+            //    whatever the player's workload would be.
+            if proof.nodes < plan.minNodes: continue
+
+            // 6. Replay that one solution in board order and measure what the player
+            //    is handed: `ruledOut` adds up every rectangle that was still legal
+            //    but wrong, `widest` is how many the single busiest step offered.
+            cost ← StepCost(proof.path)
+            if cost.widest > plan.widest: continue   // too busy: discarded, not remembered
+
+            // 7. Accept the workload this tier is named for (log gap ≤ 0.30, i.e. 35 %);
+            //    otherwise remember the closest candidate.
+            gap ← |ln(cost.ruledOut / plan.ruled)|
             if gap ≤ 0.30: return BuildPuzzle(division, anchors)
             best ← the closer of (best, this candidate)
 
@@ -143,7 +152,7 @@ GeneratePuzzle(difficulty):
     return FallbackPuzzle(difficulty)
 ```
 
-If even the escape hatch fails, `startPuzzle` shows an alert and generates again. Measured across 240 sampled generations (60 per tier) every puzzle landed inside its ±35 % band, so neither the remembered-best path nor the corner-pinned escape hatch was needed.
+If even the escape hatch fails, `startPuzzle` shows an alert and generates again. Measured across 240 sampled generations at these constants (60 per tier): every shipped puzzle re-proved unique and kept its forced opening, and 239 replay inside their ±35 % workload band when the measurement is repeated afterwards — the one that did not was shipped by the closest-miss rule in step 7. Neither the escape hatch nor the 800 ms guard fired.
 
 `BuildPuzzle` then labels the division: the distinct region values are collected, a same-sized subset of the emoji pool is drawn uniformly at random, and a shuffled permutation assigns emoji to value. Equal values share an emoji; different values never do.
 
@@ -151,7 +160,7 @@ If even the escape hatch fails, `startPuzzle` shows an alert and generates again
 
 - **First-empty-cell tiling:** `RandomTiling` always places the rectangle covering the lowest-numbered unplaced cell, so every division is enumerated once and the result is always a complete tiling.
 - **Fisher-Yates shuffle of candidate placements:** at each recursion step every fitting rectangle is offered in random order, so consecutive puzzles differ even on identical grid dimensions.
-- **Region-area caps are a sampling knob, not the difficulty dial.** Each tier walks a short ladder of caps — Easy 8 → 6 → 4, Medium 6 → 4 → 8, Hard 6 → 8 → 10, Expert 10 → 8 → 12 — cheapest first. Yield drops as the cap rises (on 7×7: 21 of 45 sampled divisions proved unique at cap 6 versus 12 of 42 at cap 10), so small caps come first for speed, not because they are easier for the player.
+- **Region-area caps set both the odds of a unique division and how the board reads.** Each tier walks a short ladder of caps — Easy 8 → 6 → 4, Medium 6 → 4 → 8, Hard 5 → 6 → 8, Expert 6 → 8 → 10 — cheapest and most promising first. Re-measured on 60 sampled divisions per board and cap: on 7×7, 24 of 60 proved unique at cap 5 against 14 of 60 at cap 8; on 8×8, 30 of 60 at cap 6 against 27 of 60 at cap 8. On the big boards the small cap is no longer only a cheap first try, it is part of the difficulty: a division cut under a small cap breaks into more, shorter regions, so its busiest step offers fewer rectangles (7×7 median 9 at cap 5 against 12 at cap 8; 8×8 median 11 at cap 6 against 13 at cap 10).
 - **Opening pins are anchored deliberately.** The boxed 1×1 region and every neighbour region keep their pinned cell as the emoji position; all remaining regions place their anchor on a random cell of the region, so players cannot infer where a region begins. Only the fallback pins every region to its top-left corner.
 
 ### 3.3 Quality checks
@@ -163,20 +172,22 @@ These checks screen every candidate inside the generation loop — a puzzle is s
 | **Uniqueness** | The division is uniquely determined by logic alone — no guessing required. | Exactly one division survives the search. Two divisions — or a search that runs out of node budget and therefore proves nothing — rejects the puzzle. |
 | **Prover's rule set** | Only the rules the player is taught are applied: rectangles tiling the grid, each region holding emojis of a single value (two cells of the same emoji may share a region, as the drawing rules allow), equal emojis sharing one area, different emojis having different areas. | The prover never assumes the region-size cap or the opening construction, neither of which the player can know. |
 | **Opening move** | Some emoji is provable on sight, so the puzzle is never a wall. | A legal-rectangle scan leaves at least one anchored cell covered only by rectangles of one area. Built by the box-in, then verified rather than trusted. |
-| **Difficulty band** | The puzzle sits near its tier's target instead of anywhere in the tier's natural range. | First candidate within ±35% of the target prover cost is accepted outright. |
+| **Difficulty band** | The candidate hands the player the workload the tier is named for, and never one brutal step. | Its one solution is replayed in board order and every still-legal rectangle counted: the wrong-but-legal ones must add up to within 35 % of the tier's figure, and the busiest single step must not exceed the tier's ceiling. A candidate over the ceiling is discarded, not remembered. `proof.nodes` only has to clear a floor, so a tier cannot ship a board the clues barely pin down. |
 | **Emoji uniqueness** | No two values share the same emoji within a puzzle. | Enforced by the permutation step. |
 
 Uniqueness is a hard gate, not a preference: a puzzle is shown only after it is proven, because ambiguous puzzles push players into trial-and-error. Proving is the expensive part, so generation is bounded by a 200,000-node search budget and an 800 ms wall-clock guard.
 
-**Measured yield and cost** (headless Edge, 2026-11-16; 150 sampled divisions per board size, using that tier's cap ladder):
+**Measured yield and cost** (headless Edge, 2026-11-16; 60 sampled divisions per board and per cap, using that tier's cap ladder). "No opening" covers candidates with no boxed 1×1 and clue sets that do not actually force it; the workload columns describe only the divisions that proved unique, before any banding:
 
-| Board | Proved unique | Ambiguous (≥ 2 divisions) | No opening available | Ran out of budget | Natural proof cost of the unique divisions |
-|-------|---------------|---------------------------|----------------------|-------------------|--------------------------------------------|
-| 5×6 | 55 / 150 | 54 | 41 | 0 | 44 – 1,107 nodes (median 150) |
-| 7×7 | 50 / 150 | 81 | 19 | 0 | 89 – 5,567 nodes (median 826) |
-| 8×8 | 49 / 150 | 80 | 21 | 0 | 357 – 35,884 nodes (median 4,179) |
+| Board | Caps tried | Proved unique | Ambiguous (≥ 2 divisions) | No opening | Ran out of budget | Natural prover cost (median) | Natural workload, ruled-out rectangles (median / worst) | Natural busiest step (median / worst) |
+|-------|-----------|---------------|------------------------------|------------|-------------------|------------------------------|----------------------------------------------------------|----------------------------------------|
+| 5×6 | 6 / 4 / 8 | 22 / 28 / 20 | 20 / 23 / 27 | 18 / 9 / 13 | 0 | 197 / 121 / 199 nodes | 12 / 32, 11 / 22, 13 / 19 | 7 / 18, 7 / 19, 8 / 13 |
+| 7×7 | 5 / 6 / 8 | 24 / 22 / 14 | 30 / 31 / 32 | 6 / 7 / 14 | 0 | 503 / 1,113 / 904 nodes | 16 / 28, 18 / 33, 22 / 31 | 9 / 13, 11 / 17, 12 / 18 |
+| 8×8 | 6 / 8 / 10 | 30 / 27 / 30 | 24 / 26 / 26 | 6 / 7 / 4 | 0 | 1,651 / 8,229 / 6,764 nodes | 21 / 55, 30 / 55, 30 / 44 | 11 / 23, 12 / 25, 13 / 23 |
 
-Two consequences: roughly a third of random divisions are ambiguous and must be thrown away, and the 200,000-node budget has never been reached on boards this size — it sits about six times above the worst natural cost observed on 8×8. The forced-opening check rejected nothing that had an opening, so it stays as a guard rather than a filter.
+Three consequences. Roughly a third of random divisions are ambiguous and must be thrown away, so sampling is not optional. The first cap in each big-board ladder is both the cheapest to prove and the least busy for the player — 8×8 at cap 6 costs a median 1,651 nodes against 8,229 at cap 8, and its busiest step offers a median 11 rectangles against 12 — which is why the ladders start there. And the natural spread on one fixed board is enormous: the unique 8×8 divisions sampled here carry workloads of 21 to 30 ruled-out rectangles with single steps reaching 25, so a tier that does not band ships whatever the sampler happens to find.
+
+The 200,000-node budget has never been reached on boards this size — the worst sampled proof was 59,735 nodes (8×8 at cap 10) — and the opening stage rejected 6 of 60 candidates at each big board's first cap, so both checks stay as guards rather than filters.
 
 ## 4. Difficulty System
 
@@ -184,27 +195,30 @@ Two consequences: roughly a third of random divisions are ambiguous and must be 
 
 | Factor | Impact |
 |--------|--------|
-| **Proof cost — the dial** | The prover's node count: how much case-analysis it takes to see that the division is the only one. Each tier samples until a candidate lands near its target, so this, not the region sizes, is what sets a tier. |
-| **Grid size** | 3×3 → easiest; 8×8 → expert. Grid size is a *ceiling* on achievable difficulty, not a difficulty setting: on 8×8 the natural cost of a provable division spans 357 – 35,884 nodes, a hundred-fold spread on one fixed board. |
-| **Number of regions** | More regions = more constraints = easier per-region, but harder global logic. A consequence of the cap ladder and grid size, not aimed at directly. |
-| **Constraint density** | Regions that force early deductions vs. those left until the end. Measured difficulty covers this implicitly: a puzzle whose deductions arrive late costs the prover more. |
-| **Max region area** | Only a sampling knob. Large caps leave the division under-constrained, so fewer candidates prove unique; the tiers therefore sample small caps first, where a proof is affordable and the difficulty can be chosen. |
+| **Workload band — the dial** | What the player is handed: every rectangle that was still legal but wrong, added up across the whole solution, plus a ceiling on how many the single busiest step may offer. Each tier samples until a candidate lands in its band, so this, not the region sizes or the prover's cost, is what sets a tier. |
+| **Prover cost — a floor, not a dial** | How much case-analysis it takes to see that the division is the only one. It stopped being the dial when it was re-measured: on 8×8 the sampled caps span a median 1,651 – 8,229 nodes while the workload a player actually meets moves only from 21 to 30. It measures how bushy the proof search is, not how much reasoning the board asks for. Each tier now only has to clear a node floor, which keeps a tier from shipping a board the clues barely pin down. |
+| **Grid size** | 3×3 → easiest; 8×8 → expert. Grid size is a *ceiling* on achievable difficulty, not a difficulty setting: on 8×8 the provable divisions sampled in §3.3 run to prover costs of 1,651 to 8,229 nodes and workloads of 21 to 30 on one fixed board, a spread no tier name carries without banding. |
+| **Number of regions** | More regions = more constraints = easier per-region, but more drawing. A consequence of the cap ladder and grid size, not aimed at directly, and it is the price of the new dial: easing the big boards raised the median region count from 16 to 19 on Hard and from 18 to 21 on Expert. |
+| **Constraint density** | Regions that force early deductions vs. those left until the end. The workload band covers part of this: a puzzle whose deductions arrive late leaves more open steps, and its busiest step gets wider, which is why the ceiling exists as well as the total. |
+| **Max region area** | A sampling knob with a visible side effect. Large caps leave the division under-constrained, so fewer candidates prove unique; and a small cap bounds both the biggest region and the widest step, so the big boards sample small caps first — Expert's median largest region fell from 9 cells to 6 once its ladder became 6 → 8 → 10. |
 | **Forced opening** | Not a difficulty lever — every puzzle is guaranteed at least one emoji that is provable on sight, so "no way in" is not something the tiers vary. |
 
-Size alone is no guide to difficulty, which is why the tiers sample rather than tune dimensions. Banding is what makes a tier name mean the same thing twice: unbandied 8×8 candidates span 357 – 35,884 nodes, while shown Expert puzzles span 4,688 – 8,009 (a 1.7× window).
+Size alone is no guide to difficulty, which is why the tiers sample rather than tune dimensions. Banding is what makes a tier name mean the same thing twice: the unbandied 8×8 divisions sampled in §3.3 carry workloads of 21 to 30 ruled-out rectangles with single steps reaching 25, while shown Expert puzzles land in 16 – 25 with no step wider than 10.
 
 ### 4.2 Difficulty tiers
 
-The configuration columns are the values in `DIFFS` and `GEN_PLAN`. The measurement columns are what 60 generated puzzles per tier actually contained (headless Edge, 2026-11-16).
+The configuration columns are the values in `DIFFS` and `GEN_PLAN`. The measurement columns are what 60 generated puzzles per tier actually contained, measured afterwards by a probe that re-proves each shipped puzzle and replays its one solution (headless Edge, 2026-11-16).
 
-| Tier | Grid range | Cap ladder | Tries / cap | Target proof nodes | Cells | Regions | Emoji values | Shown proof cost p5 – p95 | Generation time med / p95 |
-|------|-----------|-----------|-------------|--------------------|-------|---------|--------------|---------------------------|---------------------------|
-| 🟢 Easy | 3×3 – 5×5 | 8 → 6 → 4 | 16 | 45 | 12 – 25 | 5 – 13 (med 8) | 2 – 5 | 34 – 59 | 0 ms / 1 ms |
-| 🔵 Medium | 5×5 – 6×6 | 6 → 4 → 8 | 24 | 250 | 25 – 36 | 9 – 19 (med 12) | 3 – 6 | 188 – 327 | 0 ms / 1 ms |
-| 🟣 Hard | 7×7 only | 6 → 8 → 10 | 24 | 1,000 | 49 | 13 – 22 (med 17) | 4 – 7 | 785 – 1,325 | 1 ms / 4 ms |
-| 🔴 Expert | 8×8 only | 10 → 8 → 12 | 40 | 6,000 | 64 | 11 – 26 (med 18) | 5 – 9 | 4,688 – 8,009 | 6 ms / 29 ms |
+| Tier | Grid range | Cap ladder | Tries / cap | Workload target | Busiest step ceiling | Prover-node floor | Regions med (range) | Largest region med (max) | Shown workload p5 – p90 (max) | Shown busiest step med / max | Generation time med / p95 |
+|------|-----------|-----------|-------------|-----------------|----------------------|-------------------|--------------------|--------------------------|-------------------------------------|-------------------------------|---------------------------|
+| 🟢 Easy | 3×3 – 5×5 | 8 → 6 → 4 | 16 | 6 | 6 | 20 | 7 (5 – 13) | 4 (max 8) | 5 – 8 (max 8) | 5 / 6 | 0.1 ms / 1.6 ms |
+| 🔵 Medium | 5×5 – 6×6 | 6 → 4 → 8 | 24 | 14 | 9 | 120 | 11 (8 – 17) | 6 (max 6) | 11 – 17 (max 18) | 7 / 9 | 0.3 ms / 1.0 ms |
+| 🟣 Hard | 7×7 only | 5 → 6 → 8 | 24 | 16 | 9 | 300 | 19 (16 – 24) | 5 (max 6) | 12 – 20 (max 21) | 7 / 9 | 0.5 ms / 1.7 ms |
+| 🔴 Expert | 8×8 only | 6 → 8 → 10 | 40 | 20 | 10 | 1,000 | 21 (16 – 26) | 6 (max 7) | 16 – 25 (max 26) | 9 / 10 | 1.9 ms / 7.2 ms |
 
-Because generation is a synchronous main-thread task, its cost is a UX budget: even the worst tier in these samples needed 39 ms, so no worker, spinner or incremental generation is needed. **Never grow the grid to add difficulty** — grids stay at or below 8×8; a bigger board buys raw proof cost at the price of a readable cell on a phone, and the tiers would lose their measured bands.
+Against the previous dial, measured the same way on 60 puzzles per tier: the worst single step a player met fell from 30 rectangles to 9 on Hard and from 23 to 10 on Expert, the heaviest total workload from 39 to 21 and from 60 to 26, and Expert's biggest region from a median 9 cells to 6. The price is that a board is cut into more pieces — a median 19 regions on Hard against 16, and 21 on Expert against 18 — which is the trade the band pays for.
+
+Because generation is a synchronous main-thread task, its cost is a UX budget: the heaviest tier needed a median 1.9 ms and a p95 of 7.2 ms, so no worker, spinner or incremental generation is needed. **Never grow the grid to add difficulty** — grids stay at or below 8×8; a bigger board buys raw proof cost at the price of a readable cell on a phone, and the tiers would lose their measured bands.
 
 Tier descriptions:
 
@@ -405,8 +419,8 @@ It is painted-and-static only: the diagrams are real SVG boards, but nothing on 
 ```
 
 - **No framework, no modules, no bundler.** A single classic `<script>`; top-level `const`/`function` names are global, which is why the game is easy to probe from a browser console and why dead markup still has live event handlers (§11).
-- **Generation and proving are synchronous** and run at up to ~40 ms per puzzle on the sampled tiers (§4.2), comfortably inside one frame budget's worth of patience; no Web Worker is warranted.
-- **The prover is also the difficulty meter.** `countDeducibleDivisions` returns `{ sols, nodes, aborted }`; `sols` gates the puzzle and `nodes` sets its tier (§3.3, §4.1).
+- **Generation and proving are synchronous** and cost a median 1.9 ms per puzzle on the heaviest tier, the worst of 240 sampled generations being 13.2 ms (§4.2); no Web Worker is warranted, and the 800 ms guard is what bounds that tail.
+- **The prover is also the difficulty meter.** `countDeducibleDivisions` returns `{ sols, nodes, aborted, path }`: `sols` gates the puzzle, `nodes` only floors a tier, and the replayed `path` feeds `stepCost`, whose `{ ruledOut, widest }` is what the tiers band on (§3.3, §4.1).
 - **Browser assumptions:** Pointer Events, CSS custom properties, `color-mix()`, inline SVG and `localStorage`. Developed and measured in Chromium/Edge.
 - **Touch gestures:** `touch-action: none` on the grid container, plus a named non-passive `touchstart` handler that suppresses default touch behaviour while the board is still empty (it is attached and removed with the other grid listeners).
 - **No reactive state.** `S` is one plain mutable object; every mutation is followed by an explicit `render*()` call. There is no diffing, no virtual DOM and no state library.
