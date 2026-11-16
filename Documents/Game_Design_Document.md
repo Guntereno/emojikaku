@@ -443,7 +443,6 @@ Observed in the current build, in rough order of how much they cost the player:
 
 | Item | Symptom | Where |
 |------|---------|-------|
-| **Dark Mode off is not remembered** | `loadPersisted()` only acts when the stored flag is truthy, so a stored `false` is ignored and the game reopens in dark mode. | `loadPersisted()` |
 | **Reveal's confirmation toast never appears** | `showToast` appends to `getElementById('game-header')`, but the element is `class="game-header"` with no id, so the node is discarded. Reveal gives no feedback beyond the drawn regions. | `showToast()` |
 | **Area labels are unreadable in dark mode** | Region area numbers are hard-coded dark grey on a pale pastel fill, in both themes. | `renderGrid()` |
 | **Clear is not undoable** | Clear takes no history snapshot, so the next Undo returns to the state before the last create/remove rather than the board as it was before clearing. | Clear button handler |
