@@ -418,20 +418,34 @@ header h1 {
 }
 
 /* ---- Stats ---- */
+.stats-tabs {
+  display: flex; gap: 6px; flex-wrap: wrap; justify-content: center;
+  width: 100%; max-width: 380px; margin-top: 20px;
+}
+.stats-tab {
+  padding: 8px 14px; border: none; background: var(--surface);
+  color: var(--on-surface); border-radius: 14px; font-size: 0.8rem;
+  font-weight: 500; cursor: pointer;
+  transition: all 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: var(--shadow-1);
+}
+.stats-tab:hover { box-shadow: var(--shadow-2); transform: translateY(-1px); }
+.stats-tab.selected { background: var(--on-surface); color: var(--bg); box-shadow: var(--shadow-2); }
+
 .stats-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
-  margin: 20px 0; width: 100%; max-width: 320px;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  margin: 14px 0 20px; width: 100%; max-width: 380px;
 }
 .stat-card {
   background: var(--surface); border-radius: 20px;
-  padding: 20px 16px; text-align: center;
+  padding: 18px 8px; text-align: center;
   box-shadow: var(--shadow-1); transition: box-shadow 0.2s, transform 0.2s;
 }
 .stat-card:hover {
   box-shadow: var(--shadow-2);
   transform: translateY(-2px);
 }
-.stat-value { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
+.stat-value { font-size: 1.3rem; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
 .stat-label { font-size: 0.75rem; opacity: 0.55; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
 
 /* ---- Settings ---- */
@@ -562,6 +576,12 @@ header h1 {
     <!-- Stats -->
     <div id="screen-stats" class="screen">
       <h2>Your Stats</h2>
+      <div class="stats-tabs" id="stats-tabs">
+        <button class="stats-tab" data-diff="easy">🟢 Easy</button>
+        <button class="stats-tab" data-diff="medium">🔵 Medium</button>
+        <button class="stats-tab" data-diff="hard">🟣 Hard</button>
+        <button class="stats-tab" data-diff="expert">🔴 Expert</button>
+      </div>
       <div class="stats-grid" id="stats-content"></div>
       <button class="secondary-btn" id="btn-stats-back">← Back</button>
     </div>
@@ -587,6 +607,7 @@ header h1 {
       <div class="completion-emoji">🎉</div>
       <h2 id="complete-title">Puzzle Solved!</h2>
       <div class="fact-card"><div class="fact-text" id="fact-text"></div></div>
+      <div class="complete-time" id="complete-time"></div>
       <button class="play-btn" id="btn-complete-action">▶ Next Puzzle</button>
       <button class="secondary-btn" id="btn-complete-menu" style="margin-top:8px;">Menu</button>
     </div>
@@ -639,7 +660,14 @@ let S = {
   history: [],          // undo snapshots of playerRegions
   guideGuesses: {},     // { emojiChar: [size1, size2, ...] }
   timer: 0, timerInterval: null,
-  stats: { solved: 0, streak: 0, times: [], facts: [] },
+  stats: {
+    easy:   { n: 0, best: 0, total: 0 },
+    medium: { n: 0, best: 0, total: 0 },
+    hard:   { n: 0, best: 0, total: 0 },
+    expert: { n: 0, best: 0, total: 0 }
+  },
+  statsTab: null,
+  puzzleDifficulty: 'easy',
   selectedScreenBeforeSettings: 'menu',
   // Incorrect-region overlays shown after failed completion check
   _incorrectRegions: null,   // [{cells, ox, oy, ow, oh}] or null
@@ -670,7 +698,14 @@ function formatTime(s) { const m = Math.floor(s / 60); return `${m}:${(s % 60).t
 function loadPersisted() {
   try {
     const d = localStorage.getItem('emojikaku');
-    if (d) { const p = JSON.parse(d); Object.assign(S.stats, p.stats || {}); if (p.darkMode) S.darkMode = true; }
+    if (!d) return;
+    const p = JSON.parse(d);
+    // Only difficulty-keyed stats are kept; older saves (solved/streak/times/facts) are discarded
+    for (const diff of Object.keys(DIFFS)) {
+      const s = p.stats && p.stats[diff];
+      if (s && typeof s.n === 'number') S.stats[diff] = { n: s.n, best: s.best || 0, total: s.total || 0 };
+    }
+    if (p.darkMode) S.darkMode = true;
   } catch(e) {}
 }
 function savePersisted() {
@@ -1040,6 +1075,7 @@ function startPuzzle() {
   S.history = [];
   S.guideGuesses = {};
   S.timer = 0;
+  S.puzzleDifficulty = S.difficulty;
   revealed = false;
   startRegionIdx = -1;
 
@@ -1592,9 +1628,13 @@ function checkCompletion() {
 
   pauseTimer();
   if (result.correct) {
-    S.stats.solved++;
+    const t = S.timer;
+    const d = S.stats[S.puzzleDifficulty];
+    const newBest = d.n === 0 || t < d.best;
+    d.n++; d.total += t;
+    if (newBest) d.best = t;
     savePersisted();
-    showCompletion(true);
+    showCompletion(true, newBest);
   } else {
     // Show red overlays on incorrect regions before the "Not Quite Right" screen covers the grid
     if (result.wrong.length > 0 && S._incorrectRegions === null) {
@@ -1676,22 +1716,25 @@ function getCorrectRegions() {
   return correct;
 }
 
-function showCompletion(correct) {
+function showCompletion(correct, newBest) {
   const emojiEl = document.querySelector('.completion-emoji');
   const titleEl = document.getElementById('complete-title');
   const factText = document.getElementById('fact-text');
+  const timeEl = document.getElementById('complete-time');
   const actionBtn = document.getElementById('btn-complete-action');
 
   if (correct) {
     emojiEl.textContent = '🎉';
     titleEl.textContent = 'Puzzle Solved!';
     factText.textContent = 'Well done.';
+    timeEl.textContent = `Solved in ${formatTime(S.timer)}${newBest ? ' — new best!' : ''}`;
     actionBtn.textContent = '▶ Next Puzzle';
     actionBtn.onclick = () => { pauseTimer(); startPuzzle(); };
   } else {
     emojiEl.textContent = '😕';
     titleEl.textContent = 'Not Quite Right';
     factText.textContent = 'Some regions don\'t match. Correct regions are kept — incorrect ones are removed.';
+    timeEl.textContent = '';
     actionBtn.textContent = '↩ Resume';
     actionBtn.onclick = () => { S.playerRegions = getCorrectRegions(); S.history = []; resumeTimer(); renderGrid(); renderGuide(); showScreen('game'); };
   }
@@ -1983,14 +2026,21 @@ function renderTutorial() {
 // ============================================================
 // STATS
 // ============================================================
-function showStats() {
-  const avg = S.stats.times.length > 0 ? Math.round(S.stats.times.reduce((a, b) => a + b, 0) / S.stats.times.length) : 0;
+function renderStats() {
+  const d = S.stats[S.statsTab];
+  const avg = d.n > 0 ? Math.round(d.total / d.n) : 0;
+  const time = v => d.n > 0 ? formatTime(v) : '—';
   document.getElementById('stats-content').innerHTML = `
-    <div class="stat-card"><div class="stat-value">${S.stats.solved}</div><div class="stat-label">Solved</div></div>
-    <div class="stat-card"><div class="stat-value">${S.stats.streak}</div><div class="stat-label">Streak</div></div>
-    <div class="stat-card"><div class="stat-value">${formatTime(avg)}</div><div class="stat-label">Average</div></div>
-    <div class="stat-card"><div class="stat-value">${S.stats.facts.length}</div><div class="stat-label">Facts</div></div>
+    <div class="stat-card"><div class="stat-value">${d.n}</div><div class="stat-label">Solved</div></div>
+    <div class="stat-card"><div class="stat-value">${time(d.best)}</div><div class="stat-label">Best</div></div>
+    <div class="stat-card"><div class="stat-value">${time(avg)}</div><div class="stat-label">Average</div></div>
   `;
+  document.querySelectorAll('.stats-tab').forEach(b => b.classList.toggle('selected', b.dataset.diff === S.statsTab));
+}
+
+function showStats() {
+  if (!S.statsTab) S.statsTab = S.difficulty;
+  renderStats();
   S.selectedScreenBeforeSettings = S.screen;
   showScreen('stats');
 }
@@ -2060,6 +2110,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Stats
   document.getElementById('btn-stats').addEventListener('click', showStats);
+  document.getElementById('stats-tabs').addEventListener('click', e => {
+    const btn = e.target.closest('.stats-tab');
+    if (!btn) return;
+    S.statsTab = btn.dataset.diff;
+    renderStats();
+  });
   document.getElementById('btn-stats-back').addEventListener('click', () => {
     const prev = S.selectedScreenBeforeSettings || 'menu';
     showScreen(prev);
