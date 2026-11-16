@@ -276,11 +276,10 @@ There is no multi-select, no region resizing, no rotation, no swipe gesture, and
 
 A read-only scratchpad the game builds for you from what you have drawn — the player never types or declares anything.
 
-- One row per distinct emoji on the board, 160 px panel beside the grid (full width below the grid under 700 px).
+- One row per distinct emoji on the board, in the order the emojis appear on the grid (top-to-bottom, left-to-right). The order is fixed for the whole puzzle and never derived from the hidden values, so it cannot rank them. 160 px panel beside the grid (full width below the grid under 700 px).
 - Per row, a summary of the regions drawn for that emoji: `—` when nothing is drawn; `6` for one region; `2 ×2` for two same-sized regions (hover/long-press title lists the sizes); `×3 ⚠` in the accent colour when the same emoji has regions of *different* sizes.
 - A row is highlighted amber when two **different** emojis have guessed the same size — the visual cue for "these two cannot both be right".
 - The panel dims and stops updating after Reveal.
-- Known defect: rows are ordered by the emoji's hidden value, which leaks the ranking of values (§11).
 
 ### 5.5 Stats screen (🏆)
 
@@ -444,7 +443,6 @@ Observed in the current build, in rough order of how much they cost the player:
 
 | Item | Symptom | Where |
 |------|---------|-------|
-| **Guesses list leaks the value ranking** | Rows are sorted by the emoji's hidden value, so the first row is always the smallest value. Careful players can exploit the order without solving anything. | `renderGuide()` |
 | **Dark Mode off is not remembered** | `loadPersisted()` only acts when the stored flag is truthy, so a stored `false` is ignored and the game reopens in dark mode. | `loadPersisted()` |
 | **Reveal's confirmation toast never appears** | `showToast` appends to `getElementById('game-header')`, but the element is `class="game-header"` with no id, so the node is discarded. Reveal gives no feedback beyond the drawn regions. | `showToast()` |
 | **Area labels are unreadable in dark mode** | Region area numbers are hard-coded dark grey on a pale pastel fill, in both themes. | `renderGrid()` |

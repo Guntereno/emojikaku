@@ -1062,10 +1062,6 @@ function startPuzzle() {
   S.regions = result.regions;
   S.emojiMap = result.emojiMap;
 
-  // Build reverse map
-  S.reverseMap = {};
-  for (const [v, e] of Object.entries(result.emojiMap)) S.reverseMap[e] = parseInt(v);
-
   S.playerRegions = [];
   S.history = [];
   S.guideGuesses = {};
@@ -1794,13 +1790,16 @@ function renderGuide() {
   const table = document.getElementById('guide-table');
   if (!table) return;
 
-  // Collect unique emojis from the grid (skip blanks), sorted by their solution value (ascending)
-  const emojiSet = new Set(S.cellEmojis.filter(e => e !== ''));
-  const entries = [...emojiSet].map(e => ({
-    emoji: e,
-    value: S.reverseMap[e] ?? 0
-  }));
-  entries.sort((a, b) => a.value - b.value);
+  // One row per distinct emoji, in the order the emojis appear on the board
+  // (row-major). Never by the emoji's value: the row order must not rank the values.
+  const emojiOrder = [];
+  const seenEmoji = new Set();
+  for (const emoji of S.cellEmojis) {
+    if (emoji !== '' && !seenEmoji.has(emoji)) {
+      seenEmoji.add(emoji);
+      emojiOrder.push(emoji);
+    }
+  }
 
   const guesses = computeGuesses();
 
@@ -1815,7 +1814,7 @@ function renderGuide() {
 
   // Build rows
   let html = '';
-  for (const { emoji, value } of entries) {
+  for (const emoji of emojiOrder) {
     const sizes = guesses[emoji] || [];
     const uniqueSizes = [...new Set(sizes)];
     // Conflict: the same emoji has regions of different sizes
