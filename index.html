@@ -336,6 +336,8 @@ header h1 {
   dominant-baseline: central;
 }
 
+.region-value { fill: var(--fg); }
+
 .minus-preview {
   position: absolute;
   pointer-events: none;
@@ -1171,7 +1173,7 @@ function renderGrid() {
     width: w * cellSize + (w - 1) * CELL_GAP,
     height: h * cellSize + (h - 1) * CELL_GAP,
     rx: bgCornerRadius, ry: bgCornerRadius,
-    fill: getComputedStyle(document.documentElement).getPropertyValue('--grid-bg').trim() || '#EDEBE6'
+    fill: getComputedStyle(document.body).getPropertyValue('--grid-bg').trim() || '#EDEBE6'
   });
   svg.appendChild(gridBg);
 
@@ -1193,8 +1195,7 @@ function renderGrid() {
       const cellCornerRadius = 3;
       
       // Subtle cell background: slightly lighter than grid bg for visibility
-      const gridBg = getComputedStyle(document.documentElement).getPropertyValue('--grid-bg').trim();
-      const isDark = document.documentElement.classList.contains('dark');
+      const isDark = document.body.classList.contains('dark');
       const cellFill = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.45)';
 
       const rect = el('rect', {
@@ -1236,7 +1237,7 @@ function renderGrid() {
 
       // Per-region fill color from the palette
       const palIdx = ((i % 9) + 1);
-      let bgColor = getComputedStyle(document.documentElement).getPropertyValue(`--region-fill-${palIdx}`).trim();
+      let bgColor = getComputedStyle(document.body).getPropertyValue(`--region-fill-${palIdx}`).trim();
       if (!bgColor || bgColor === '') {
         bgColor = `hsla(${(i * 47) % 360}, 55%, 72%, ${revealed ? 0.5 : 0.45})`;
       }
@@ -1245,7 +1246,7 @@ function renderGrid() {
         x: ox, y: oy,
         width: ow, height: oh,
         rx: 5, ry: 5,
-        fill: bgColor.replace(/[\d.]+\)$/, revealed ? '0.7)' : '0.6)')
+        fill: bgColor
       });
       if (!revealed) {
         overlayRect.style.cursor = 'pointer';
@@ -1261,9 +1262,7 @@ function renderGrid() {
           y: oy + oh / 2 + oh * 0.08,
           'font-size': Math.max(9, Math.floor(Math.min(ow, oh) * 0.25)),
           'font-weight': '600',
-          fill: '#2D3142',
-          class: 'cell-label',
-          opacity: '0.7'
+          class: 'cell-label region-value'
         });
         valText.textContent = area;
         regionGroup.appendChild(valText);
@@ -2059,6 +2058,8 @@ function applyTheme() {
   const btn = document.getElementById('btn-theme');
   btn.textContent = S.darkMode ? '🌙' : '☀️';
   btn.title = S.darkMode ? 'Switch to light mode' : 'Switch to dark mode';
+  // The board's colours are baked into the SVG when it is drawn, so a theme change needs a repaint
+  if (S.gridW) renderGrid();
 }
 
 // ============================================================

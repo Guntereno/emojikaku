@@ -326,7 +326,7 @@ A Material-flavoured flat look built entirely from CSS custom properties, with l
 | Foreground | `#1D1B20` | `#E8E0D5` |
 | Grid background | `#F1EFEA` | `#24272E` |
 | Accent | `#E07A5F` | `#E07A5F` |
-| Region fills | 9-pastel palette at 0.45 alpha | same hues at 0.30 alpha, drawn at 0.6 (0.7 once revealed) |
+| Region fills | 9-pastel palette at 0.45 alpha | same hues at 0.30 alpha |
 
 - Type stack: Segoe UI / Roboto / system. Timer and stats use tabular numerals.
 - Elevation: three shadow levels on cards and buttons; buttons lift 1–2 px on hover and settle on press.
@@ -340,7 +340,8 @@ The grid is an inline **SVG**, rebuilt from scratch on every change (no per-cell
 - Layer 0 grid background (rounded 6 px), layer 1 cell rectangles (rounded 3 px, translucent white on the grid background), layer 2 player/solution region fills with their area labels, layer 3 emoji glyphs on top so they are never hidden.
 - Cell size is computed to fit the viewport: available width minus the guesses panel (row mode) or the full width (column mode), available height minus 56 px header and 72 px control bar. Cell gap 2 px, outer padding 4 px. Re-computed on a 150 ms-debounced window resize.
 - Region colours cycle through the nine pastels by creation order, so adjacent regions rarely collide.
-- Area labels are drawn in a fixed `#2D3142` in both themes (§11).
+- Area labels use the theme's foreground colour at full opacity, so they read against the region fill in both themes.
+- Every colour is read from the theme when the SVG is built and baked into it, so a theme change repaints the board (an in-game toggle keeps the same regions).
 
 ### 7.3 Emoji presentation
 
@@ -444,7 +445,6 @@ Observed in the current build, in rough order of how much they cost the player:
 | Item | Symptom | Where |
 |------|---------|-------|
 | **Reveal's confirmation toast never appears** | `showToast` appends to `getElementById('game-header')`, but the element is `class="game-header"` with no id, so the node is discarded. Reveal gives no feedback beyond the drawn regions. | `showToast()` |
-| **Area labels are unreadable in dark mode** | Region area numbers are hard-coded dark grey on a pale pastel fill, in both themes. | `renderGrid()` |
 | **Clear is not undoable** | Clear takes no history snapshot, so the next Undo returns to the state before the last create/remove rather than the board as it was before clearing. | Clear button handler |
 | **Puzzles are lost silently** | ← Menu stops the timer and discards the board; Play always generates a new puzzle. There is no confirmation and no resume. | `btn-back`, `startPuzzle()` |
 | **Dead legacy UI** | A hidden "mark emoji as value" panel (markup + CSS + an `Esc` handler that only closes it) survives from the deleted scratchpad. It is invisible, unreachable, and still wired. | `#emoji-panel` |
