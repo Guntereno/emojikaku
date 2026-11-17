@@ -400,9 +400,11 @@ Step 1 — What is Shikaku?      🧩   plain Shikaku rules in three sentences, 
                                     the puzzle (four number clues on an empty grid) →
                                     the same grid divided into fills; the clue digit already
                                     states the area, so no extra labels are painted.
-Step 2 — The Emoji Twist       🎲   the same division as a pair: "what you see" (four emoji
-                                    clues) → "what is hidden" (fills plus area numbers), with
-                                    one mapping line: 🍎 = 6   🌸 = 3   ⭐ = 2   ⚽ = 1.
+Step 2 — The Emoji Twist       🎲   pair: "what you see" (four emoji clues) → "what is
+                                    hidden" (fills plus area numbers). Its text gives the
+                                    two invariants — same emoji, same count; two different
+                                    emojis, two different counts — and that no emoji states
+                                    its count. Mapping line: 🍎 = 6   🌸 = 3   ⭐ = 2   ⚽ = 1.
 Step 3 — How to Draw           ✋   pair: an accent draw-preview around the 6-cell rectangle
                                     mid-drag → a 4 px outline around a 4-cell rectangle that
                                     holds two emojis (🌸 and ⚽), i.e. what gets rejected.
