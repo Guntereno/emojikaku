@@ -539,6 +539,7 @@ header h1 {
       <div class="fact-card"><div class="fact-text" id="fact-text"></div></div>
       <div class="complete-time" id="complete-time"></div>
       <button class="play-btn" id="btn-complete-action">▶ Next Puzzle</button>
+      <button class="secondary-btn" id="btn-complete-share" style="margin-top:8px;">📋 Copy result</button>
       <button class="secondary-btn" id="btn-complete-menu" style="margin-top:8px;">Menu</button>
     </div>
   </div>
@@ -572,6 +573,7 @@ let S = {
   darkMode: true,
   // Puzzle data
   gridW: 0, gridH: 0,
+  seed: 0,              // 32-bit seed this board came from; travels in the URL
   cells: null,          // [[emoji|number], ...] flat or 2D
   solutionCells: [],    // 1D array of values (the numbers)
   cellEmojis: [],       // 1D array of emojis at each cell position
@@ -607,7 +609,19 @@ const DIFF_TAG = { easy: '🟢 Easy', medium: '🔵 Medium', hard: '🟣 Hard', 
 // ============================================================
 // UTILITIES
 // ============================================================
-function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+// One seeded stream for every random choice the generator makes, so a seed plus a
+// difficulty always rebuilds the same board. mulberry32: integer-only, so the
+// replay is bit-exact rather than merely close.
+let rngState = 0;
+function seedRng(seed) { rngState = seed >>> 0; }
+function randU32() {
+  rngState = (rngState + 0x6D2B79F5) >>> 0;
+  let t = rngState;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return (t ^ (t >>> 14)) >>> 0;
+}
+function rand(min, max) { return randU32() % (max - min + 1) + min; }
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = rand(0, i); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
 function idxToRC(idx, w) { return [Math.floor(idx / w), idx % w]; }
@@ -673,16 +687,19 @@ const GEN_PLAN = {
 // Log gap, because one candidate's workload can be several times another's: 0.30 ≈ within 35%.
 const ACCEPT_LOG = 0.30;
 const PROOF_BUDGET = 200000;
-const GEN_MS_LIMIT = 800;
+// One generation's prover work, shared by every candidate it samples. This used to be
+// a wall-clock guard, which made the sampled candidate count — and so the board — a
+// function of machine speed.
+const GEN_NODE_BUDGET = 500000;
+let genNodes = 0;
 
 function generatePuzzle(difficulty) {
   const cfg = DIFFS[difficulty];
   const plan = GEN_PLAN[difficulty];
-  const deadline = performance.now() + GEN_MS_LIMIT;
   let best = null, bestGap = Infinity;
 
   for (const cap of plan.caps) {
-    for (let i = 0; i < plan.tries; i++) {
+    for (let i = 0; i < plan.tries && genNodes < GEN_NODE_BUDGET; i++) {
       const w = rand(cfg.minW, cfg.maxW);
       const h = rand(cfg.minH, cfg.maxH);
       const regions = randomTiling(w, h, cap);
@@ -696,7 +713,8 @@ function generatePuzzle(difficulty) {
       // The box-in is only worth having if the clue set really does force it.
       if (!hasForcedCell(w, anchors, ix)) continue;
 
-      const proof = countDeducibleDivisions(w, ix, PROOF_BUDGET);
+      const proof = countDeducibleDivisions(w, ix, Math.min(PROOF_BUDGET, GEN_NODE_BUDGET - genNodes));
+      genNodes += proof.nodes;
       // An unfinished search proves nothing, even if it found one division so far.
       if (proof.aborted || proof.sols !== 1) continue;
       if (proof.nodes < plan.minNodes) continue;
@@ -707,10 +725,8 @@ function generatePuzzle(difficulty) {
       const gap = Math.abs(Math.log(cost.ruledOut / plan.ruled));
       if (gap <= ACCEPT_LOG) return buildEmojiPuzzle(w, h, regions, anchors);
       if (gap < bestGap) { bestGap = gap; best = { w, h, regions, anchors }; }
-
-      if (performance.now() > deadline) break;
     }
-    if (performance.now() > deadline) break;
+    if (genNodes >= GEN_NODE_BUDGET) break;
   }
 
   if (best) return buildEmojiPuzzle(best.w, best.h, best.regions, best.anchors);
@@ -723,13 +739,14 @@ function generatePuzzle(difficulty) {
 function generateFallbackPuzzle(difficulty) {
   const cfg = DIFFS[difficulty];
   for (const cap of [6, 4]) {
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 20 && genNodes < GEN_NODE_BUDGET; i++) {
       const w = rand(cfg.minW, cfg.maxW);
       const h = rand(cfg.minH, cfg.maxH);
       const regions = randomTiling(w, h, cap);
       if (!regions) continue;
       const anchors = placeAnchors(w, h, regions, true, findOpening(w, h, regions));
-      const proof = countDeducibleDivisions(w, buildRectIndex(w, h, anchors), PROOF_BUDGET);
+      const proof = countDeducibleDivisions(w, buildRectIndex(w, h, anchors), Math.min(PROOF_BUDGET, GEN_NODE_BUDGET - genNodes));
+      genNodes += proof.nodes;
       if (!proof.aborted && proof.sols === 1) return buildEmojiPuzzle(w, h, regions, anchors);
     }
   }
@@ -1032,10 +1049,35 @@ function buildEmojiPuzzle(w, h, regions, anchors) {
 // ============================================================
 // START PUZZLE
 // ============================================================
-function startPuzzle() {
-  const result = generatePuzzle(S.difficulty);
-  if (!result) { alert('Failed to generate puzzle. Trying again...'); startPuzzle(); return; }
+// A link seeds exactly one puzzle; every other start draws its own seed, so every
+// board the game shows has a URL that reproduces it.
+let pendingSeed = null;
 
+function linkFor(difficulty, seed) { return `#${difficulty}-${seed.toString(36)}`; }
+
+function parseLink() {
+  const m = /^(easy|medium|hard|expert)-([0-9a-z]{1,7})$/.exec(location.hash.slice(1));
+  if (!m) return null;
+  const seed = parseInt(m[2], 36);
+  return seed <= 0xFFFFFFFF ? { difficulty: m[1], seed } : null;
+}
+
+function startPuzzle() {
+  const base = pendingSeed !== null ? pendingSeed : (Math.random() * 0x100000000) >>> 0;
+  pendingSeed = null;
+
+  // A bounded ladder over adjacent seeds: under a fixed seed the old alert-and-retry
+  // recursion would loop forever, and a fresh random re-roll could not be replayed.
+  let result = null, usedSeed = base;
+  for (let k = 0; k < 4 && !result; k++) {
+    usedSeed = (base + k) >>> 0;
+    seedRng(usedSeed);
+    genNodes = 0;
+    result = generatePuzzle(S.difficulty);
+  }
+  if (!result) { alert('Failed to generate puzzle.'); showScreen('menu'); return; }
+
+  S.seed = usedSeed;
   S.gridW = result.w;
   S.gridH = result.h;
   S.cellEmojis = result.cellEmojis;
@@ -1057,6 +1099,9 @@ function startPuzzle() {
   document.getElementById('game-diff').textContent = DIFF_TAG[S.puzzleDifficulty];
   startTimer();
   disableControls(false);
+  // Fragment-only: legal on a file:// page, unlike history.replaceState, and it
+  // replaces rather than stacks so Back still means "the previous puzzle".
+  location.replace(linkFor(S.puzzleDifficulty, usedSeed));
   showScreen('game');
 }
 
@@ -1644,6 +1689,8 @@ function showCompletion(correct, newBest) {
   const timeEl = document.getElementById('complete-time');
   const actionBtn = document.getElementById('btn-complete-action');
   document.getElementById('complete-diff').textContent = DIFF_TAG[S.puzzleDifficulty];
+  // The challenge line quotes a time, and the failure branch shows no time.
+  document.getElementById('btn-complete-share').style.display = correct ? '' : 'none';
 
   if (correct) {
     emojiEl.textContent = '🎉';
@@ -1662,6 +1709,36 @@ function showCompletion(correct, newBest) {
   }
 
   showScreen('complete');
+}
+
+function shareText() {
+  return `I solved a ${DIFF_TAG[S.puzzleDifficulty]} Emojikaku puzzle in ${formatTime(S.timer)} — can you beat it?\n` +
+         location.href.split('#')[0] + linkFor(S.puzzleDifficulty, S.seed);
+}
+
+function copyResult(btn) {
+  const label = btn.textContent;
+  const text = shareText();
+  const finish = ok => {
+    btn.textContent = ok ? '✓ Copied' : '⚠ Copy failed';
+    setTimeout(() => { btn.textContent = label; }, 1500);
+  };
+  // navigator.clipboard exists on a file:// page but can still reject without focus,
+  // and engines without it need the selection-based path.
+  const legacyCopy = () => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.top = '-100px';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    ta.remove();
+    return ok;
+  };
+  if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => finish(true), () => finish(legacyCopy()));
+  else finish(legacyCopy());
 }
 
 // ============================================================
@@ -2018,6 +2095,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Complete → menu
   document.getElementById('btn-complete-menu').addEventListener('click', () => showScreen('menu'));
 
+  // Complete → clipboard
+  const shareBtn = document.getElementById('btn-complete-share');
+  shareBtn.addEventListener('click', () => copyResult(shareBtn));
+
   // Stats
   document.getElementById('btn-stats').addEventListener('click', showStats);
   document.getElementById('stats-tabs').addEventListener('click', e => {
@@ -2054,6 +2135,16 @@ document.addEventListener('DOMContentLoaded', () => {
       if (S.screen === 'game') renderGrid();
     }, 150);
   });
+
+  // A shared link opens straight into the puzzle it names. The link is atomic: a
+  // fragment that is not a tier and a seed is ignored and the menu boots as usual.
+  const link = parseLink();
+  if (link) {
+    S.difficulty = link.difficulty;
+    document.querySelectorAll('.diff-btn').forEach(b => b.classList.toggle('selected', b.dataset.diff === link.difficulty));
+    pendingSeed = link.seed;
+    startPuzzle();
+  }
 });
 </script>
 </body>

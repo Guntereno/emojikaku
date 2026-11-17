@@ -12,10 +12,10 @@ this document is stale.
 | **Working title** | *Emojikaku* |
 | **Genre** | Puzzle — logic / spatial division |
 | **Platform** | Web page. One self-contained `index.html`; opens by double-clicking the file. Desktop (mouse + keyboard) and mobile (touch) browsers. |
-| **Distribution** | Local file only. No PWA manifest, no service worker, no app store build, no server, no build step, no dependencies. |
+| **Distribution** | Local file only. No PWA manifest, no service worker, no app store build, no server, no build step, no dependencies. A shared puzzle link carries only a `#tier-seed` fragment (§6.3), so it resolves against whatever URL the file is opened from; a recipient needs their own copy of the file until the game is hosted. |
 | **Screen sizes** | Any viewport from ~320 px wide upward; the layout reflows at 700 px (side-by-side → stacked). |
 | **Single-player / Multiplayer** | Single-player. No accounts, no sessions, no leaderboards. |
-| **Session length** | One puzzle at a time; a puzzle is not saved and cannot be resumed after leaving the game screen. |
+| **Session length** | One puzzle at a time; a puzzle is not saved and cannot be resumed after leaving the game screen. A puzzle link (§6.3) regenerates the same board rather than resuming it. |
 
 ### 1.1 Elevator pitch
 
@@ -77,7 +77,7 @@ Those last two rules are exactly the freedom the player has, so the uniqueness p
 
 - The puzzle is validated **only when every cell of the grid is covered** by player-drawn regions. There is no incremental or per-region validation.
 - When the last cell is placed, each region is checked: it must be a rectangle, all of its cells must share one solution value, and its area must equal that value.
-- **Correct** → 🎉 "Puzzle Solved!" screen with solve time, best-time marker, ▶ Next Puzzle and Menu buttons. The solve is recorded in stats (§6.1).
+- **Correct** → 🎉 "Puzzle Solved!" screen with solve time, best-time marker, ▶ Next Puzzle, 📋 Copy result and Menu buttons. The solve is recorded in stats (§6.1) and the copy button puts a challenge line plus a link to this exact puzzle on the clipboard (§6.3).
 - **Incorrect** → 😕 "Not Quite Right" screen. The button offers **↩ Resume**, which keeps the regions that were correct, deletes the ones that were wrong, resets the undo history, and restarts the timer. The removed wrong regions are marked on the grid with a 4 px red outline (white stroke in dark mode); that outline is dismissed by the next interaction with the grid.
 - Because the generator proves uniqueness, the "Not Quite Right" path is only reachable through player error, and it is not recorded anywhere.
 
@@ -93,17 +93,19 @@ Those last two rules are exactly the freedom the player has, so the uniqueness p
 
 ## 3. Puzzle Generation
 
-Generation happens synchronously in the browser at the moment Play is pressed, and always yields a puzzle that has been *proven* to have exactly one solution.
+Generation happens synchronously in the browser at the moment Play is pressed, and always yields a puzzle that has been *proven* to have exactly one solution. It is a **pure function of `(seed, difficulty)`**: a 32-bit seed drives every random choice in the pipeline (`seedRng`, mulberry32), and the seed is the address-bar fragment when the page was opened from a puzzle link (§6.3), otherwise one `Math.random()` draw per puzzle. The same seed on the same engine therefore replays the same board.
 
 ### 3.1 Generation algorithm (top-down)
 
 ```
-GeneratePuzzle(difficulty):
+GeneratePuzzle(seed, difficulty):
     plan ← GEN_PLAN[difficulty]      // cap ladder, tries, workload band, ceiling, floor
+    RNG ← SeedRng(seed)              // every random choice below draws from this stream
+    nodes ← 0                        // prover work spent so far on this one puzzle
     best ← none
 
     for cap in plan.caps:
-        for attempt in 1..plan.tries:
+        for attempt in 1..plan.tries:      // sampling stops early if nodes > 500,000
             w, h ← random size inside the tier's grid range
 
             // 1. Tile the grid with rectangles, none larger than `cap`.
@@ -124,6 +126,7 @@ GeneratePuzzle(difficulty):
             // 4. Reject the puzzle unless the clues leave exactly one division.
             //    The prover keeps the single solution it found.
             proof ← CountDeducibleDivisions(anchors)   // { sols, nodes, aborted, path }
+            nodes += proof.nodes
             if proof.aborted or proof.sols ≠ 1: continue
 
             // 5. A board whose clues barely pin anything down is too open for a tier,
@@ -142,8 +145,6 @@ GeneratePuzzle(difficulty):
             if gap ≤ 0.30: return BuildPuzzle(division, anchors)
             best ← the closer of (best, this candidate)
 
-            if time spent > 800 ms: stop sampling          // latency guard
-
     if best ≠ none: return BuildPuzzle(best)
 
     // Escape hatch, almost never reached: pin every anchor to its region's
@@ -152,7 +153,7 @@ GeneratePuzzle(difficulty):
     return FallbackPuzzle(difficulty)
 ```
 
-If even the escape hatch fails, `startPuzzle` shows an alert and generates again. Measured across 240 sampled generations at these constants (60 per tier): every shipped puzzle re-proved unique and kept its forced opening, and 239 replay inside their ±35 % workload band when the measurement is repeated afterwards — the one that did not was shipped by the closest-miss rule in step 7. Neither the escape hatch nor the 800 ms guard fired.
+If even the escape hatch fails, `startPuzzle` moves to the next seed in a bounded four-seed ladder (`seed`, `seed + 1`, `seed + 2`, `seed + 3`) and only then gives up: an alert and a return to the menu, never a silent re-entry into generation. The ladder is arithmetic, so two machines opening the same link fail at the same point. Measured across 480 sampled generations at these constants on the seeded build (120 fixed seeds per tier, headless Edge, 2026-11-17): every shipped puzzle re-proved unique and kept its forced opening, and 479 replay inside their ±35 % workload band when the measurement is repeated afterwards — the one that did not was shipped by the closest-miss rule in step 7. Neither the escape hatch nor the cost guard fired: the heaviest generation spent 133,854 of its 500,000 prover nodes, and re-running the same seed list in a second browser process reproduced the same boards and the same node counts.
 
 `BuildPuzzle` then labels the division: the distinct region values are collected, a same-sized subset of the emoji pool is drawn uniformly at random, and a shuffled permutation assigns emoji to value. Equal values share an emoji; different values never do.
 
@@ -175,7 +176,7 @@ These checks screen every candidate inside the generation loop — a puzzle is s
 | **Difficulty band** | The candidate hands the player the workload the tier is named for, and never one brutal step. | Its one solution is replayed in board order and every still-legal rectangle counted: the wrong-but-legal ones must add up to within 35 % of the tier's figure, and the busiest single step must not exceed the tier's ceiling. A candidate over the ceiling is discarded, not remembered. `proof.nodes` only has to clear a floor, so a tier cannot ship a board the clues barely pin down. |
 | **Emoji uniqueness** | No two values share the same emoji within a puzzle. | Enforced by the permutation step. |
 
-Uniqueness is a hard gate, not a preference: a puzzle is shown only after it is proven, because ambiguous puzzles push players into trial-and-error. Proving is the expensive part, so generation is bounded by a 200,000-node search budget and an 800 ms wall-clock guard.
+Uniqueness is a hard gate, not a preference: a puzzle is shown only after it is proven, because ambiguous puzzles push players into trial-and-error. Proving is the expensive part, so generation is bounded twice over — a 200,000-node budget for proving one candidate, and a 500,000-node budget shared by all candidates in one generation. There is no wall-clock guard: a time limit would make the accepted candidate depend on machine speed, and a seeded puzzle has to come out the same on every machine (§6.3).
 
 **Measured yield and cost** (headless Edge, 2026-11-16; 60 sampled divisions per board and per cap, using that tier's cap ladder). "No opening" covers candidates with no boxed 1×1 and clue sets that do not actually force it; the workload columns describe only the divisions that proved unique, before any banding:
 
@@ -203,22 +204,22 @@ The 200,000-node budget has never been reached on boards this size — the worst
 | **Max region area** | A sampling knob with a visible side effect. Large caps leave the division under-constrained, so fewer candidates prove unique; and a small cap bounds both the biggest region and the widest step, so the big boards sample small caps first — Expert's median largest region fell from 9 cells to 6 once its ladder became 6 → 8 → 10. |
 | **Forced opening** | Not a difficulty lever — every puzzle is guaranteed at least one emoji that is provable on sight, so "no way in" is not something the tiers vary. |
 
-Size alone is no guide to difficulty, which is why the tiers sample rather than tune dimensions. Banding is what makes a tier name mean the same thing twice: the unbandied 8×8 divisions sampled in §3.3 carry workloads of 21 to 30 ruled-out rectangles with single steps reaching 25, while shown Expert puzzles land in 16 – 25 with no step wider than 10.
+Size alone is no guide to difficulty, which is why the tiers sample rather than tune dimensions. Banding is what makes a tier name mean the same thing twice: the unbandied 8×8 divisions sampled in §3.3 carry workloads of 21 to 30 ruled-out rectangles with single steps reaching 25, while shown Expert puzzles land in 15 – 24 with no step wider than 10.
 
 ### 4.2 Difficulty tiers
 
-The configuration columns are the values in `DIFFS` and `GEN_PLAN`. The measurement columns are what 60 generated puzzles per tier actually contained, measured afterwards by a probe that re-proves each shipped puzzle and replays its one solution (headless Edge, 2026-11-16).
+The configuration columns are the values in `DIFFS` and `GEN_PLAN`. The measurement columns are what 120 generated puzzles per tier actually contained, measured afterwards by a probe that re-proves each shipped puzzle and replays its one solution (headless Edge, 2026-11-17). Generation is now seeded, so those samples are a fixed list of seeds per tier and the whole table is reproducible, not a fresh draw each time it is measured.
 
 | Tier | Grid range | Cap ladder | Tries / cap | Workload target | Busiest step ceiling | Prover-node floor | Regions med (range) | Largest region med (max) | Shown workload p5 – p90 (max) | Shown busiest step med / max | Generation time med / p95 |
 |------|-----------|-----------|-------------|-----------------|----------------------|-------------------|--------------------|--------------------------|-------------------------------------|-------------------------------|---------------------------|
-| 🟢 Easy | 3×3 – 5×5 | 8 → 6 → 4 | 16 | 6 | 6 | 20 | 7 (5 – 13) | 4 (max 8) | 5 – 8 (max 8) | 5 / 6 | 0.1 ms / 1.6 ms |
-| 🔵 Medium | 5×5 – 6×6 | 6 → 4 → 8 | 24 | 14 | 9 | 120 | 11 (8 – 17) | 6 (max 6) | 11 – 17 (max 18) | 7 / 9 | 0.3 ms / 1.0 ms |
-| 🟣 Hard | 7×7 only | 5 → 6 → 8 | 24 | 16 | 9 | 300 | 19 (16 – 24) | 5 (max 6) | 12 – 20 (max 21) | 7 / 9 | 0.5 ms / 1.7 ms |
-| 🔴 Expert | 8×8 only | 6 → 8 → 10 | 40 | 20 | 10 | 1,000 | 21 (16 – 26) | 6 (max 7) | 16 – 25 (max 26) | 9 / 10 | 1.9 ms / 7.2 ms |
+| 🟢 Easy | 3×3 – 5×5 | 8 → 6 → 4 | 16 | 6 | 6 | 20 | 7 (4 – 12) | 5 (max 8) | 5 – 8 (max 9) | 5 / 6 | 0.1 ms / 0.6 ms |
+| 🔵 Medium | 5×5 – 6×6 | 6 → 4 → 8 | 24 | 14 | 9 | 120 | 12 (8 – 18) | 6 (max 6) | 11 – 16 (max 18) | 7 / 9 | 0.2 ms / 0.8 ms |
+| 🟣 Hard | 7×7 only | 5 → 6 → 8 | 24 | 16 | 9 | 300 | 19 (16 – 27) | 5 (max 6) | 12 – 20 (max 21) | 8 / 9 | 0.3 ms / 1.2 ms |
+| 🔴 Expert | 8×8 only | 6 → 8 → 10 | 40 | 20 | 10 | 1,000 | 21 (18 – 27) | 6 (max 8) | 15 – 24 (max 26) | 8 / 10 | 1.5 ms / 4.8 ms |
 
 Against the previous dial, measured the same way on 60 puzzles per tier: the worst single step a player met fell from 30 rectangles to 9 on Hard and from 23 to 10 on Expert, the heaviest total workload from 39 to 21 and from 60 to 26, and Expert's biggest region from a median 9 cells to 6. The price is that a board is cut into more pieces — a median 19 regions on Hard against 16, and 21 on Expert against 18 — which is the trade the band pays for.
 
-Because generation is a synchronous main-thread task, its cost is a UX budget: the heaviest tier needed a median 1.9 ms and a p95 of 7.2 ms, so no worker, spinner or incremental generation is needed. **Never grow the grid to add difficulty** — grids stay at or below 8×8; a bigger board buys raw proof cost at the price of a readable cell on a phone, and the tiers would lose their measured bands.
+Because generation is a synchronous main-thread task, its cost is a UX budget: the heaviest tier needed a median 1.5 ms and a p95 of 4.8 ms, and the worst of the 480 sampled generations took 12.2 ms, so no worker, spinner or incremental generation is needed. **Never grow the grid to add difficulty** — grids stay at or below 8×8; a bigger board buys raw proof cost at the price of a readable cell on a phone, and the tiers would lose their measured bands.
 
 Tier descriptions:
 
@@ -242,6 +243,8 @@ menu ──▶ game ──▶ complete ──▶ game (next puzzle) │ menu
 
 header: 🏆 ──▶ stats ──▶ back returns to the screen you came from
 ```
+
+A puzzle link (§6.3) is the one way to arrive at **game** without passing through the menu.
 
 Game screen as laid out (row mode, viewport wider than 700 px):
 
@@ -300,8 +303,8 @@ Four difficulty tabs (🟢 Easy / 🔵 Medium / 🟣 Hard / 🔴 Expert), the cu
 
 ### 5.6 Completion
 
-- **Success:** 🎉, "Puzzle Solved!", the tier the puzzle was generated at (the same plain-text token as §5.1, which is what makes "that tier's record" below interpretable), a card reading "Well done.", the line `Solved in m:ss`, suffixed ` — new best!` when the time beats that tier's record, then ▶ Next Puzzle (same difficulty, new puzzle) and Menu.
-- **Failure:** 😕, "Not Quite Right", the same tier line, the explanation that correct regions are kept and incorrect ones removed, then ↩ Resume (§2.4). No time is shown or recorded.
+- **Success:** 🎉, "Puzzle Solved!", the tier the puzzle was generated at (the same plain-text token as §5.1, which is what makes "that tier's record" below interpretable), a card reading "Well done.", the line `Solved in m:ss`, suffixed ` — new best!` when the time beats that tier's record, then ▶ Next Puzzle (same difficulty, new puzzle), 📋 Copy result (§6.3) and Menu.
+- **Failure:** 😕, "Not Quite Right", the same tier line, the explanation that correct regions are kept and incorrect ones removed, then ↩ Resume (§2.4). No time is shown or recorded, and there is no Copy result button: with no time there is no score to challenge anyone with.
 
 ## 6. Progression & Persistence
 
@@ -321,6 +324,30 @@ Per difficulty tier, the game keeps `{ n, best, total }`:
 One `localStorage` entry, key `emojikaku`, holding `{ stats, darkMode }`. Written on every successful solve and on every theme change; read once at load. Difficulty selection, tutorial progress and in-progress puzzle state are not persisted. Save data from earlier versions (lifetime solved counter, streak, per-puzzle time list, facts) is discarded on load rather than migrated.
 
 There is no account, sync, export or cloud storage.
+
+### 6.3 Sharing a puzzle
+
+Every puzzle has an address: the URL's fragment names its tier and the seed that generated it.
+
+```
+index.html#hard-1z141z3          // tier, then the seed in base36 (7 digits at most)
+```
+
+- **Written on every puzzle.** Play, ▶ Next Puzzle and a deep link all go through `startPuzzle`, which rewrites the fragment with `location.replace` once the board exists — deliberately not `history.replaceState`, which throws on a `file://` page: `location.replace` to a fragment-only target neither reloads nor adds a history entry, so Back still leaves the game rather than walking back through a trail of puzzles. The address bar therefore always describes the board on screen.
+- **Read once at boot.** A well-formed fragment — one of `easy` / `medium` / `hard` / `expert`, then 1 – 7 base36 characters decoding to at most 2³² − 1 — goes straight into that puzzle: the menu chip moves to the link's tier and the timer starts, exactly as if Play had been pressed at that difficulty. Anything else (a typo, an unknown tier, an out-of-range seed) is ignored and the page boots to the menu as before. A link seeds exactly one puzzle; the next ▶ Next Puzzle draws its own seed and rewrites the address bar.
+- **The copy button** on the 🎉 screen puts two lines on the clipboard — `navigator.clipboard.writeText`, with a selection-based `document.execCommand('copy')` fallback for engines lacking the API or refusing it without focus — and swaps its own label to ✓ Copied / ⚠ Copy failed for 1.5 s. The two lines, with the solved puzzle's tier and time filled in:
+
+  ```
+  I solved a 🟣 Hard Emojikaku puzzle in 2:41 — can you beat it?
+  file:///D:/dev/Shikaku/index.html#hard-1z141z3
+  ```
+
+  The tier token and the time come from the puzzle just solved; the link is the page's own URL with that puzzle's fragment, so it is correct wherever the file happens to be open.
+- **A link is not an answer key.** The fragment carries the seed and nothing else. The recipient regenerates the board through the same generator, which still proves uniqueness before shipping, so nothing about the solution, the sender's regions or their mistakes travels with the link.
+- **Solving a shared puzzle is an ordinary solve.** It files under the tier the link named (§6.1); nothing about sharing is stored (§6.2). There is no comparison with the sender, no leaderboard, and no marker that a puzzle arrived by link.
+- **While the game is a local file, the link's path is the sender's** (§1). A recipient needs their own copy of `index.html`; only the fragment has to match, so links become universal the day the file is hosted.
+- **Reproduction is same-engine.** The seed is a 32-bit integer and every draw comes from mulberry32, whose arithmetic is integer-exact; reproduction was measured to be identical across separate browser processes on Chromium/Edge, the engine this project already assumes (§9.1). The accept test uses `Math.log`, which is not IEEE-mandated, so a different engine could in principle land on the other side of a workload threshold sitting within 1 ulp of a band edge.
+- **Seeds are for sharing, not for secrecy.** 2³² values are trivially enumerable.
 
 ## 7. Visual & Audio Direction (as built)
 
@@ -398,28 +425,30 @@ It is painted-and-static only: the diagrams are real SVG boards, but nothing on 
 │  index.html  — single file, no build, no dependencies, no server│
 │                                                                │
 │  <style>      CSS custom properties, light + dark tokens       │
-│  <body>       six .screen divs + header                        │
+│  <body>       five .screen divs + header                        │
 │  <script>     one classic script; every helper is global        │
 │                                                                │
 │    state        one mutable object `S` (screens, puzzle, draws,│
 │                 history, guesses, stats, timer, dark mode)      │
-│    generation   randomTiling → findOpening → placeAnchors →    │
-│                 buildRectIndex → countDeducibleDivisions        │
+│    generation   seedRng (mulberry32) → randomTiling →           │
+│                 findOpening → placeAnchors → buildRectIndex →   │
+│                 countDeducibleDivisions → stepCost              │
 │    rendering    SVG rebuilt per change; cell size fit to screen │
 │    input        pointer events on the grid container + keyboard │
 │    rules        commitDrawnRegion / validateSolution / prover   │
 │                 share one rectangle model                       │
+│    linking      '#' + tier + '-' + seed(base36) ↔ shown board   │
 │    persistence  localStorage 'emojikaku'                        │
 └────────────────────────────────────────────────────────────────┘
 ```
 
 - **No framework, no modules, no bundler.** A single classic `<script>`; top-level `const`/`function` names are global, which is why the game is easy to probe from a browser console and why dead markup still has live event handlers (§11).
-- **Generation and proving are synchronous** and cost a median 1.9 ms per puzzle on the heaviest tier, the worst of 240 sampled generations being 13.2 ms (§4.2); no Web Worker is warranted, and the 800 ms guard is what bounds that tail.
+- **Generation and proving are synchronous** and cost a median 1.5 ms per puzzle on the heaviest tier, the worst of 480 sampled generations being 12.2 ms (§4.2); no Web Worker is warranted, and the 500,000-node budget shared by one generation is what bounds that tail. No wall-clock guard: generation must replay identically for a given seed (§6.3).
 - **The prover is also the difficulty meter.** `countDeducibleDivisions` returns `{ sols, nodes, aborted, path }`: `sols` gates the puzzle, `nodes` only floors a tier, and the replayed `path` feeds `stepCost`, whose `{ ruledOut, widest }` is what the tiers band on (§3.3, §4.1).
-- **Browser assumptions:** Pointer Events, CSS custom properties, `color-mix()`, inline SVG and `localStorage`. Developed and measured in Chromium/Edge.
+- **Browser assumptions:** Pointer Events, CSS custom properties, `color-mix()`, inline SVG, `localStorage`, `location.replace` with a fragment-only URL, and `navigator.clipboard` (falling back to a selection + `document.execCommand('copy')`). Developed and measured in Chromium/Edge.
 - **Touch gestures:** `touch-action: none` on the grid container, plus a named non-passive `touchstart` handler that suppresses default touch behaviour while the board is still empty (it is attached and removed with the other grid listeners).
 - **No reactive state.** `S` is one plain mutable object; every mutation is followed by an explicit `render*()` call. There is no diffing, no virtual DOM and no state library.
-- **Failure handling:** generation failure shows `alert()` and regenerates; `localStorage` read/write is wrapped in `try/catch` and silently ignored when storage is unavailable.
+- **Failure handling:** generation failure walks a bounded four-seed ladder (§3.1) and then shows `alert()` and returns to the menu — it never re-enters `startPuzzle`. A malformed puzzle link is ignored rather than reported. `localStorage` read/write is wrapped in `try/catch` and silently ignored when storage is unavailable.
 
 ## 10. Future / Post-Launch Ideas
 
@@ -429,11 +458,11 @@ Nothing in this section is built. Each item is a proposal, not a description of 
 
 | Feature | Priority | Notes |
 |---------|----------|-------|
-| **Daily puzzle** | Medium | One pre-selected puzzle per 24 h, ranked against the player's own tier history. Would need seeded generation to be shareable. |
+| **Daily puzzle** | Medium | One pre-selected puzzle per 24 h, ranked against the player's own tier history. Generation is already seeded and link-addressable (§6.3); what is missing is a date → seed rule. |
 | **Weekly challenge** | Low | Two expert puzzles (mid-week and weekend). Depends on the daily-puzzle machinery. |
 | **Emoji themes** | Low | Seasonal pools (Halloween 🎃, Christmas 🎄). Purely cosmetic — one line of code, since the pool is already a flat array. |
 | **Editor mode** | Medium | Players design and share grids; the system proves uniqueness (or rejects) and generates emoji mappings for shared puzzles. |
-| **Multiplayer (async)** | Low | Two players solve the same seed; compare time. Needs seeds and an identity. |
+| **Multiplayer (async)** | Low | Two players solve the same seed; compare time. The seeds and the puzzle link are built (§6.3); what is missing is an identity. |
 | **Collaborative solver** | Low | Share puzzle state by link; comment on strategy. |
 | **API / widget** | Low | "Puzzle of the day" home-screen widget. |
 | **App packaging / PWA** | Medium | Manifest + service worker so the single file installs offline; the code is already self-contained. |
@@ -463,7 +492,6 @@ Observed in the current build, in rough order of how much they cost the player:
 |------|---------|-------|
 | **Reveal's confirmation toast never appears** | `showToast` appends to `getElementById('game-header')`, but the element is `class="game-header"` with no id, so the node is discarded. Reveal gives no feedback beyond the drawn regions. | `showToast()` |
 | **Clear is not undoable** | Clear takes no history snapshot, so the next Undo returns to the state before the last create/remove rather than the board as it was before clearing. | Clear button handler |
-| **Puzzles are lost silently** | ← Menu stops the timer and discards the board; Play always generates a new puzzle. There is no confirmation and no resume. | `btn-back`, `startPuzzle()` |
+| **Puzzles are lost silently** | ← Menu stops the timer and discards the board; Play always generates a new puzzle. There is no confirmation and no resume. The board itself is no longer lost — the address bar carries its link (§6.3), so reloading regenerates the same puzzle — but the drawn regions, undo history and timer are. | `btn-back`, `startPuzzle()` |
 | **Filler copy on the success screen** | The completion card always reads "Well done." — a leftover of the deleted facts feature. | `showCompletion()` |
-| **Generation failure path recurses** | `alert()` then a recursive `startPuzzle()`; unbounded in principle, though the fallback has never failed in measurement. | `startPuzzle()` |
 
