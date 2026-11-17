@@ -676,6 +676,7 @@ function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   const el = document.getElementById(`screen-${name}`);
   if (el) el.classList.add('active');
+  if (name === 'menu') clearLink();
 }
 
 // ============================================================
@@ -1080,6 +1081,12 @@ function parseLink() {
   const seed = parseInt(m[2], 36);
   return seed <= 0xFFFFFFFF ? { difficulty: m[1], seed } : null;
 }
+
+// A menu names no board, so the fragment that named the last one must not outlive it:
+// reloading a menu that still carries a seed re-opens that puzzle, and a URL copied
+// from it shares a seed nobody chose. Same fragment-only rule as startPuzzle; dropping
+// the fragment outright reloads the page instead.
+function clearLink() { if (location.hash) location.replace('#'); }
 
 function startPuzzle() {
   const base = pendingSeed !== null ? pendingSeed : (Math.random() * 0x100000000) >>> 0;
