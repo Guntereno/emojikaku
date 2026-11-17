@@ -249,7 +249,7 @@ Game screen as laid out (row mode, viewport wider than 700 px):
 ┌──────────────────────────────────────────────────────────────────┐
 │ Emojikaku                                              🌙  🏆  │
 │                                                                  │
-│ ← Menu                                        1:24               │
+│ ← Menu              🟣 Hard                   1:24               │
 │                                                                  │
 │   ┌──────┬──────┬──────┬──────┐      ┌────────────────────┐      │
 │   │ 🐼   │      │ ⭐   │      │      │ GUESSES            │      │
@@ -263,7 +263,7 @@ Game screen as laid out (row mode, viewport wider than 700 px):
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-The filled rectangle is a player-drawn region of area 4 — the centred `4` is its area (§2.5). Below 700 px the guesses panel stacks under the grid and the grid takes the full width.
+The filled rectangle is a player-drawn region of area 4 — the centred `4` is its area (§2.5). Between ← Menu and the timer the header names the tier the board was generated at, using the menu chips' token as plain text (`DIFF_TAG`), so the player always knows which band they are in; it is not a control and cannot be changed mid-puzzle. Below 700 px the guesses panel stacks under the grid and the grid takes the full width.
 
 ### 5.2 Header and menu
 
@@ -300,8 +300,8 @@ Four difficulty tabs (🟢 Easy / 🔵 Medium / 🟣 Hard / 🔴 Expert), the cu
 
 ### 5.6 Completion
 
-- **Success:** 🎉, "Puzzle Solved!", a card reading "Well done.", the line `Solved in m:ss`, suffixed ` — new best!` when the time beats that tier's record, then ▶ Next Puzzle (same difficulty, new puzzle) and Menu.
-- **Failure:** 😕, "Not Quite Right", the explanation that correct regions are kept and incorrect ones removed, then ↩ Resume (§2.4). No time is shown or recorded.
+- **Success:** 🎉, "Puzzle Solved!", the tier the puzzle was generated at (the same plain-text token as §5.1, which is what makes "that tier's record" below interpretable), a card reading "Well done.", the line `Solved in m:ss`, suffixed ` — new best!` when the time beats that tier's record, then ▶ Next Puzzle (same difficulty, new puzzle) and Menu.
+- **Failure:** 😕, "Not Quite Right", the same tier line, the explanation that correct regions are kept and incorrect ones removed, then ↩ Resume (§2.4). No time is shown or recorded.
 
 ## 6. Progression & Persistence
 

@@ -308,6 +308,10 @@ header h1 {
 
 .timer { font-size: 1.15rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 
+/* Plain text, never chip-shaped: a filled pill here would read as a control. */
+.diff-tag { font-size: 0.85rem; font-weight: 600; color: var(--on-surface-medium); white-space: nowrap; }
+.complete-diff { font-size: 1rem; margin: 6px 0 0; }
+
 #grid-container {
   position: relative;
   touch-action: none;
@@ -495,6 +499,7 @@ header h1 {
     <div id="screen-game" class="screen">
       <div class="game-header">
         <button id="btn-back">← Menu</button>
+        <span class="diff-tag" id="game-diff"></span>
         <span class="timer" id="timer">0:00</span>
       </div>
 
@@ -530,6 +535,7 @@ header h1 {
     <div id="screen-complete" class="screen">
       <div class="completion-emoji">🎉</div>
       <h2 id="complete-title">Puzzle Solved!</h2>
+      <div class="diff-tag complete-diff" id="complete-diff"></div>
       <div class="fact-card"><div class="fact-text" id="fact-text"></div></div>
       <div class="complete-time" id="complete-time"></div>
       <button class="play-btn" id="btn-complete-action">▶ Next Puzzle</button>
@@ -594,6 +600,9 @@ const DIFFS = {
   hard:   { minW: 7, maxW: 7, minH: 7, maxH: 7 },
   expert: { minW: 8, maxW: 8, minH: 8, maxH: 8 }
 };
+
+// The tier token the menu chips use, repeated wherever a puzzle has to say which tier it is
+const DIFF_TAG = { easy: '🟢 Easy', medium: '🔵 Medium', hard: '🟣 Hard', expert: '🔴 Expert' };
 
 // ============================================================
 // UTILITIES
@@ -1045,6 +1054,7 @@ function startPuzzle() {
   renderGrid();
   document.getElementById('guide-panel').classList.remove('disabled');
   renderGuide();
+  document.getElementById('game-diff').textContent = DIFF_TAG[S.puzzleDifficulty];
   startTimer();
   disableControls(false);
   showScreen('game');
@@ -1633,6 +1643,7 @@ function showCompletion(correct, newBest) {
   const factText = document.getElementById('fact-text');
   const timeEl = document.getElementById('complete-time');
   const actionBtn = document.getElementById('btn-complete-action');
+  document.getElementById('complete-diff').textContent = DIFF_TAG[S.puzzleDifficulty];
 
   if (correct) {
     emojiEl.textContent = '🎉';
