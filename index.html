@@ -131,7 +131,7 @@ header h1 {
 }
 
 /* ---- Menu ---- */
-.menu-title { font-size: 3.5rem; margin-bottom: 4px; }
+.menu-mark { width: 6rem; height: 6rem; margin-bottom: 4px; }
 .menu-subtitle {
   font-size: 1rem; opacity: 0.6;
   margin-bottom: 32px; text-align: center; line-height: 1.5;
@@ -476,7 +476,18 @@ header h1 {
   <div id="screen-container">
     <!-- Menu -->
     <div id="screen-menu" class="screen active">
-      <div class="menu-title">🧩❓</div>
+      <svg class="menu-mark" viewBox="0 0 64 64" aria-hidden="true">
+        <rect x="34" y="2" width="28" height="28" rx="4" fill="var(--fg)"/>
+        <rect x="2" y="34" width="60" height="28" rx="4" fill="var(--fg)"/>
+        <g transform="rotate(-6 16 16)">
+          <rect x="1" y="1" width="30" height="30" rx="7" fill="var(--accent)"/>
+          <g fill="none" stroke="var(--bg)" stroke-width="3.4" stroke-linecap="round">
+            <path d="M 8.4 12.8 Q 10.6 9.2 12.8 12.8"/>
+            <path d="M 19.2 12.8 Q 21.4 9.2 23.6 12.8"/>
+            <path d="M 8.8 19.8 Q 16 26.4 23.2 19.8"/>
+          </g>
+        </g>
+      </svg>
       <div class="menu-subtitle">Divide the grid into rectangles.<br>Each emoji hides a number — deduce which is which.</div>
 
       <div class="difficulty-group">

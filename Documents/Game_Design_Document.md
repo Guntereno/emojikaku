@@ -271,7 +271,7 @@ The filled rectangle is a player-drawn region of area 4 — the centred `4` is i
 ### 5.2 Header and menu
 
 - **Header:** the wordmark `Emojikaku`, then the theme button (shows 🌙 while dark, ☀️ while light; one click toggles, on by default), 🏆 (stats).
-- **Menu:** 🧩❓ mark, one-line pitch ("Divide the grid into rectangles. Each emoji hides a number — deduce which is which."), four difficulty chips (🟢 Easy, 🔵 Medium, 🟣 Hard, 🔴 Expert, Easy preselected), ▶ Play, ✨ Tutorial. Difficulty choice is per-session and is not remembered between loads.
+- **Menu:** the mark — a 96 px inline SVG drawn from the board's own geometry: three rounded blocks that are the regions of a solved 4×4 grid (areas 6, 2 and 8), with the top-left one an accented tile tipped 6° counter-clockwise and carrying a cut-out smiling face. It is decoration, not text (`aria-hidden="true"`), and paints only from the theme tokens: `--fg` for the blocks, `--accent` for the tipped tile, `--bg` for the face, so the page colour shows through it in either theme. The face is a detail of the tile, not a glyph — nothing in the mark is text, and no emoji is used. Below the mark: the one-line pitch ("Divide the grid into rectangles. Each emoji hides a number — deduce which is which."), four difficulty chips (🟢 Easy, 🔵 Medium, 🟣 Hard, 🔴 Expert, Easy preselected), ▶ Play, ✨ Tutorial. Difficulty choice is per-session and is not remembered between loads.
 
 ### 5.3 Controls & interactions
 
