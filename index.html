@@ -500,7 +500,7 @@ header h1 {
       <div class="game-header">
         <button id="btn-back">← Menu</button>
         <span class="diff-tag" id="game-diff"></span>
-        <span class="timer" id="timer">0:00</span>
+        <span class="timer" id="timer">0:00.00</span>
       </div>
 
       <div id="game-layout">
@@ -627,7 +627,11 @@ function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = rand(0,
 function idxToRC(idx, w) { return [Math.floor(idx / w), idx % w]; }
 function rcToIdx(r, c, w) { return r * w + c; }
 
-function formatTime(s) { const m = Math.floor(s / 60); return `${m}:${(s % 60).toString().padStart(2, '0')}`; }
+// Times are held as integer centiseconds everywhere: the timer, the stats and the share line.
+function formatTime(cs) {
+  const m = Math.floor(cs / 6000), s = Math.floor(cs / 100) % 60, h = cs % 100;
+  return `${m}:${s.toString().padStart(2, '0')}.${h.toString().padStart(2, '0')}`;
+}
 
 // ============================================================
 // PERSISTENCE
@@ -638,15 +642,16 @@ function loadPersisted() {
     if (!d) return;
     const p = JSON.parse(d);
     // Only difficulty-keyed stats are kept; older saves (solved/streak/times/facts) are discarded
+    const cs = p.unit === 'cs' ? 1 : 100;  // a save from before hundredths holds whole seconds
     for (const diff of Object.keys(DIFFS)) {
       const s = p.stats && p.stats[diff];
-      if (s && typeof s.n === 'number') S.stats[diff] = { n: s.n, best: s.best || 0, total: s.total || 0 };
+      if (s && typeof s.n === 'number') S.stats[diff] = { n: s.n, best: (s.best || 0) * cs, total: (s.total || 0) * cs };
     }
     if (typeof p.darkMode === 'boolean') S.darkMode = p.darkMode;
   } catch(e) {}
 }
 function savePersisted() {
-  try { localStorage.setItem('emojikaku', JSON.stringify({ stats: S.stats, darkMode: S.darkMode })); } catch(e) {}
+  try { localStorage.setItem('emojikaku', JSON.stringify({ unit: 'cs', stats: S.stats, darkMode: S.darkMode })); } catch(e) {}
 }
 
 // ============================================================
@@ -1900,10 +1905,18 @@ function _clearOverlays() {
 // ============================================================
 // TIMER
 // ============================================================
-function startTimer() { stopTimer(); S.timerInterval = setInterval(() => { S.timer++; document.getElementById('timer').textContent = formatTime(S.timer); }, 1000); }
+// Elapsed time is read from performance.now(), never counted from ticks: a hidden tab throttles
+// setInterval to 1/s, which would under-count, and it cannot resolve hundredths at all.
+function commitTimer() { if (S.timerInterval) S.timer = S._timerBase + Math.floor((performance.now() - S._timerOrigin) / 10); }
+function startTimer() {
+  stopTimer();
+  S._timerBase = S.timer;
+  S._timerOrigin = performance.now();
+  S.timerInterval = setInterval(() => { commitTimer(); document.getElementById('timer').textContent = formatTime(S.timer); }, 20);
+}
 function stopTimer() { if (S.timerInterval) { clearInterval(S.timerInterval); S.timerInterval = null; } }
-function pauseTimer() { stopTimer(); S._timerPausedAt = S.timer; }
-function resumeTimer() { S.timer = S._timerPausedAt || 0; startTimer(); }
+function pauseTimer() { commitTimer(); stopTimer(); }
+function resumeTimer() { startTimer(); }
 
 // ============================================================
 // TUTORIAL

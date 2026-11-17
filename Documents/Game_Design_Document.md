@@ -252,7 +252,7 @@ Game screen as laid out (row mode, viewport wider than 700 px):
 ┌──────────────────────────────────────────────────────────────────┐
 │ Emojikaku                                              🌙  🏆  │
 │                                                                  │
-│ ← Menu              🟣 Hard                   1:24               │
+│ ← Menu              🟣 Hard                   1:24.06            │
 │                                                                  │
 │   ┌──────┬──────┬──────┬──────┐      ┌────────────────────┐      │
 │   │ 🐼   │      │ ⭐   │      │      │ GUESSES            │      │
@@ -266,7 +266,7 @@ Game screen as laid out (row mode, viewport wider than 700 px):
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-The filled rectangle is a player-drawn region of area 4 — the centred `4` is its area (§2.5). Between ← Menu and the timer the header names the tier the board was generated at, using the menu chips' token as plain text (`DIFF_TAG`), so the player always knows which band they are in; it is not a control and cannot be changed mid-puzzle. Below 700 px the guesses panel stacks under the grid and the grid takes the full width.
+The filled rectangle is a player-drawn region of area 4 — the centred `4` is its area (§2.5). Between ← Menu and the timer the header names the tier the board was generated at, using the menu chips' token as plain text (`DIFF_TAG`), so the player always knows which band they are in; it is not a control and cannot be changed mid-puzzle. The timer reads `m:ss.hh` — whole minutes, seconds and hundredths, e.g. `1:24.06` — because an Easy board is routinely decided in a couple of seconds and the hundredths are what separate two solves of it (§6.1). Below 700 px the guesses panel stacks under the grid and the grid takes the full width.
 
 ### 5.2 Header and menu
 
@@ -303,7 +303,7 @@ Four difficulty tabs (🟢 Easy / 🔵 Medium / 🟣 Hard / 🔴 Expert), the cu
 
 ### 5.6 Completion
 
-- **Success:** 🎉, "Puzzle Solved!", the tier the puzzle was generated at (the same plain-text token as §5.1, which is what makes "that tier's record" below interpretable), a card reading "Well done.", the line `Solved in m:ss`, suffixed ` — new best!` when the time beats that tier's record, then ▶ Next Puzzle (same difficulty, new puzzle), 📋 Copy result (§6.3) and Menu.
+- **Success:** 🎉, "Puzzle Solved!", the tier the puzzle was generated at (the same plain-text token as §5.1, which is what makes "that tier's record" below interpretable), a card reading "Well done.", the line `Solved in m:ss.hh`, suffixed ` — new best!` when the time beats that tier's record, then ▶ Next Puzzle (same difficulty, new puzzle), 📋 Copy result (§6.3) and Menu.
 - **Failure:** 😕, "Not Quite Right", the same tier line, the explanation that correct regions are kept and incorrect ones removed, then ↩ Resume (§2.4). No time is shown or recorded, and there is no Copy result button: with no time there is no score to challenge anyone with.
 
 ## 6. Progression & Persistence
@@ -315,13 +315,14 @@ Stats are the entire progression system. There is no XP, no levels, no unlocks, 
 Per difficulty tier, the game keeps `{ n, best, total }`:
 
 - Recorded **only on a correct completion**, filed under the difficulty the puzzle was *generated at*, so changing the menu selection mid-puzzle cannot misfile a solve.
-- `n` — solves at that tier. `best` — fastest solve in seconds. `total` — sum of solve times, used to show a rounded average.
+- `n` — solves at that tier. `best` — fastest solve, and `total` — the sum of solve times used to show an average; both are integer **centiseconds** (1/100 s), never floating-point seconds. The average is `round(total / n)` in the same unit.
 - Failed attempts, Reveal and abandoned puzzles are not recorded at all.
-- Solve times are wall-clock seconds on the game screen: the timer starts when a puzzle is generated, pauses at the completion check, resumes on Resume, and stops on Reveal or ← Menu. A revealed or abandoned puzzle can therefore never be a "best".
+- Solve times are wall-clock centiseconds on the game screen: the timer starts when a puzzle is generated, pauses at the completion check, resumes on Resume, and stops on Reveal or ← Menu. A revealed or abandoned puzzle can therefore never be a "best". The stop happens before the time is read, so the solve cannot be filed with a stale hundredth.
+- Elapsed time is measured against `performance.now()` from the moment the clock was started, not by counting display ticks. **Why:** a backgrounded tab throttles `setInterval` to roughly one callback per second, so a tick counter would under-count any solve that spent time in another tab — and could not resolve hundredths at all. What polls is only the *display*, every 20 ms, so the number on screen can trail real time by about 2 cs; the value a solve is filed with is committed from `performance.now()` at the pause, so it is exact to the centisecond.
 
 ### 6.2 Persistence
 
-One `localStorage` entry, key `emojikaku`, holding `{ stats, darkMode }`. Written on every successful solve and on every theme change; read once at load. Difficulty selection, tutorial progress and in-progress puzzle state are not persisted. Save data from earlier versions (lifetime solved counter, streak, per-puzzle time list, facts) is discarded on load rather than migrated.
+One `localStorage` entry, key `emojikaku`, holding `{ unit, stats, darkMode }`. `unit: 'cs'` says the times in `stats` are centiseconds; a save written before hundredths existed has no `unit` and its whole-second times are multiplied by 100 once, while loading. That is the one migration, and it is safe because it rescales the same measurements rather than inventing data — unlike save data from other earlier versions (lifetime solved counter, streak, per-puzzle time list, facts), which is still discarded on load rather than migrated. Written on every successful solve and on every theme change; read once at load. Difficulty selection, tutorial progress and in-progress puzzle state are not persisted.
 
 There is no account, sync, export or cloud storage.
 
@@ -338,7 +339,7 @@ index.html#hard-1z141z3          // tier, then the seed in base36 (7 digits at m
 - **The copy button** on the 🎉 screen puts two lines on the clipboard — `navigator.clipboard.writeText`, with a selection-based `document.execCommand('copy')` fallback for engines lacking the API or refusing it without focus — and swaps its own label to ✓ Copied / ⚠ Copy failed for 1.5 s. The two lines, with the solved puzzle's tier and time filled in:
 
   ```
-  I solved a 🟣 Hard Emojikaku puzzle in 2:41 — can you beat it?
+  I solved a 🟣 Hard Emojikaku puzzle in 2:41.06 — can you beat it?
   file:///D:/dev/Shikaku/index.html#hard-1z141z3
   ```
 
@@ -445,7 +446,7 @@ It is painted-and-static only: the diagrams are real SVG boards, but nothing on 
 - **No framework, no modules, no bundler.** A single classic `<script>`; top-level `const`/`function` names are global, which is why the game is easy to probe from a browser console and why dead markup still has live event handlers (§11).
 - **Generation and proving are synchronous** and cost a median 1.5 ms per puzzle on the heaviest tier, the worst of 480 sampled generations being 12.2 ms (§4.2); no Web Worker is warranted, and the 500,000-node budget shared by one generation is what bounds that tail. No wall-clock guard: generation must replay identically for a given seed (§6.3).
 - **The prover is also the difficulty meter.** `countDeducibleDivisions` returns `{ sols, nodes, aborted, path }`: `sols` gates the puzzle, `nodes` only floors a tier, and the replayed `path` feeds `stepCost`, whose `{ ruledOut, widest }` is what the tiers band on (§3.3, §4.1).
-- **Browser assumptions:** Pointer Events, CSS custom properties, `color-mix()`, inline SVG, `localStorage`, `location.replace` with a fragment-only URL, and `navigator.clipboard` (falling back to a selection + `document.execCommand('copy')`). Developed and measured in Chromium/Edge.
+- **Browser assumptions:** Pointer Events, CSS custom properties, `color-mix()`, inline SVG, `localStorage`, `location.replace` with a fragment-only URL, `performance.now()` as the only time source for the clock, and `navigator.clipboard` (falling back to a selection + `document.execCommand('copy')`). Developed and measured in Chromium/Edge.
 - **Touch gestures:** `touch-action: none` on the grid container, plus a named non-passive `touchstart` handler that suppresses default touch behaviour while the board is still empty (it is attached and removed with the other grid listeners).
 - **No reactive state.** `S` is one plain mutable object; every mutation is followed by an explicit `render*()` call. There is no diffing, no virtual DOM and no state library.
 - **Failure handling:** generation failure walks a bounded four-seed ladder (§3.1) and then shows `alert()` and returns to the menu — it never re-enters `startPuzzle`. A malformed puzzle link is ignored rather than reported. `localStorage` read/write is wrapped in `try/catch` and silently ignored when storage is unavailable.
