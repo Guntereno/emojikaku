@@ -466,7 +466,7 @@ Nothing in this section is built. Each item is a proposal, not a description of 
 | **Multiplayer (async)** | Low | Two players solve the same seed; compare time. The seeds and the puzzle link are built (§6.3); what is missing is an identity. |
 | **Collaborative solver** | Low | Share puzzle state by link; comment on strategy. |
 | **API / widget** | Low | "Puzzle of the day" home-screen widget. |
-| **App packaging / PWA** | Medium | Manifest + service worker so the single file installs offline; the code is already self-contained. |
+| **App packaging / PWA** | Medium | Manifest + service worker so the single file installs offline; the code is already self-contained. The menu mark (§5.2) cannot be shipped as the icon unchanged: measured at 16 px its 4-unit gaps bleed shut and the whole thing fuses into a blob, and no face-like detail survives below ~40 px — so the icon needs a faceless, gap-surviving variant, not the same drawing smaller. |
 | **Interactive onboarding** | Medium | The §8 walkthrough with a draggable practice 3×3 and a reveal-the-number teaching step. |
 | **Audio & haptics** | Low | None today. Region commit, success, failure. |
 | **💎 Gems economy** | Low | Cosmetic emoji packs earned by daily login / streaks / leaderboard placement. Only worth designing after retention is real. |
